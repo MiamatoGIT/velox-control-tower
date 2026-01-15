@@ -1,0 +1,6 @@
+node_modules/
+.env
+velox_core.db
+ACC_Sync/
+temp_uploads/
+.DS_Store

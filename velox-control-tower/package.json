@@ -21,8 +21,13 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
     "google-translate-api-x": "^10.7.2",
-    "pdfkit": "^0.17.2"
+    "multer": "^2.0.2",
+    "pdfkit": "^0.17.2",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^5.1.7"
   }
 }
