@@ -3,21 +3,29 @@ import { StyleSheet, View, StatusBar, Alert, KeyboardAvoidingView, Platform, Scr
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Audio } from 'expo-av';
+import * as Device from 'expo-device'; 
+import * as Application from 'expo-application'; 
+import axios from 'axios';
 
 // MODULES
 import { VELOX_COLORS } from './src/theme/colors';
 import { Header } from './src/components/Header';
 import { InputCard } from './src/components/InputCard';
-import { uploadReport } from './src/services/api';
+import { uploadReport } from './src/services/api'; 
 import { useAudioRecorder } from './src/hooks/useAudioRecorder';
 import { LanguagePicker } from './src/components/LanguagePicker';
 import { TRANSLATIONS, LanguageCode } from './src/utils/translations';
-// ✅ NEW MODULES
 import { LoginScreen } from './src/components/LoginScreen';
 import { CameraCapture } from './src/components/CameraCapture';
+import { LegalModal } from './src/components/LegalModal';
+import { Footer } from './src/components/Footer';
+
+// ✅ CRITICAL FIX: Use your Real Cloud IP. Do NOT use localhost.
+const API_URL = 'http://34.51.236.211:3000';
 
 export default function App() {
-  // ✅ STATE: Login & Work Package
+  // ✅ STATE
+  const [isLegalAccepted, setIsLegalAccepted] = useState(false);
   const [currentUser, setCurrentUser] = useState<string | null>(null);
   const [currentWP, setCurrentWP] = useState<string | null>(null);
   const [showCamera, setShowCamera] = useState(false);
@@ -32,7 +40,53 @@ export default function App() {
   const [qtyData, setQtyData] = useState<string>(""); 
   const [commentData, setCommentData] = useState<string>("");
 
-  useEffect(() => { (async () => { await Audio.requestPermissionsAsync(); })(); }, []);
+  // ✅ NEW: Server Health Check on App Start
+  useEffect(() => { 
+    (async () => { 
+        await Audio.requestPermissionsAsync(); 
+        try {
+            // Wake up the server / Check connection
+            await axios.get(`${API_URL}/`);
+            console.log("🟢 Server Online");
+        } catch (e) {
+            console.log("🔴 Server Connection Failed");
+            // Optional: Alert the user if critical
+            // Alert.alert("Connection Warning", "Could not reach Control Tower. Check internet.");
+        }
+    })(); 
+  }, []);
+
+  // ✅ handle Legal Acceptance with Device Fingerprinting
+  const handleLegalAccept = async () => {
+    try {
+        // Alert.alert("Registering Device", "Securing connection to Control Tower...");
+        
+        let deviceId = "UNKNOWN_ID";
+        if (Platform.OS === 'android') {
+            deviceId = Application.androidId || "ANDROID_NO_ID";
+        } else if (Platform.OS === 'ios') {
+            deviceId = await Application.getIosIdForVendorAsync() || "IOS_NO_ID";
+        }
+
+        const payload = {
+            deviceId: deviceId,
+            deviceName: Device.deviceName || "Generic Device",
+            deviceModel: Device.modelName || "Generic Model",
+            osVersion: `${Device.osName} ${Device.osVersion}`
+        };
+
+        // Send to backend
+        await axios.post(`${API_URL}/api/consent`, payload);
+        
+        // Only allow entry if server logged it (or fail open if you prefer)
+        setIsLegalAccepted(true);
+
+    } catch (error) {
+        console.error("Consent Error", error);
+        // Fail Open: Let them work even if server is offline
+        setIsLegalAccepted(true); 
+    }
+  };
 
   // ✅ LOGOUT FUNCTION
   const handleLogout = () => { setCurrentUser(null); setCurrentWP(null); setStep(1); };
@@ -43,43 +97,62 @@ export default function App() {
     try {
         Alert.alert("Syncing", "Uploading Evidence...");
         
-        // ✅ Payload now includes Photo and User Info
         const payload = {
             taskStatus,
             quantity: qtyData,
             comments: commentData,
             lang: lang.toLowerCase(),
-            workPackage: currentWP, // From Login
-            user: currentUser       // From Login
+            workPackage: currentWP,
+            user: currentUser
         };
 
-        await uploadReport(payload, recordingUri || undefined, photoUri || undefined); // ✅ Pass Photo
+        // Note: Make sure src/services/api.ts ALSO uses the correct URL
+        // If it doesn't support passing a base URL, you might need to update that file too.
+        await uploadReport(payload, recordingUri || undefined, photoUri || undefined);
         
         Alert.alert("✅ Success", t.success);
         setStep(1); setQtyData(""); setCommentData(""); setTaskStatus(null); setPhotoUri(null);
     } catch (error) {
+        console.error(error);
         Alert.alert("❌ Error", "Check Connection.");
     }
   };
 
-  // 1️⃣ IF NOT LOGGED IN, SHOW LOGIN SCREEN
+  // ============================================================
+  // 🛑 RENDER LOGIC
+  // ============================================================
+
+  // 1️⃣ PRIORITY #1: LEGAL CHECK
+  if (!isLegalAccepted) {
+    return (
+      <SafeAreaProvider>
+        <StatusBar barStyle="light-content" backgroundColor="#121212" />
+        <LegalModal onAccept={handleLegalAccept} />
+      </SafeAreaProvider>
+    );
+  }
+
+  // 2️⃣ PRIORITY #2: LOGIN SCREEN
   if (!currentUser) {
     return (
       <View style={styles.container}>
         <LinearGradient colors={[VELOX_COLORS.primaryDim, VELOX_COLORS.background]} style={StyleSheet.absoluteFill} />
         <SafeAreaView style={styles.safeArea}>
-          <LoginScreen onLogin={(wp, user) => { setCurrentWP(wp); setCurrentUser(user); }} />
+          <View style={{ flex: 1 }}>
+            <LoginScreen onLogin={(wp, user) => { setCurrentWP(wp); setCurrentUser(user); }} />
+          </View>
+          <Footer />
         </SafeAreaView>
       </View>
     );
   }
 
-  // 2️⃣ IF CAMERA IS OPEN
+  // 3️⃣ PRIORITY #3: CAMERA
   if (showCamera) {
     return <CameraCapture onPhotoTaken={(uri) => { setPhotoUri(uri); setShowCamera(false); }} onClose={() => setShowCamera(false)} />;
   }
 
-  // 3️⃣ MAIN WORKFLOW
+  // 4️⃣ PRIORITY #4: MAIN DASHBOARD
   return (
     <SafeAreaProvider>
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
@@ -88,7 +161,6 @@ export default function App() {
           <LinearGradient colors={[VELOX_COLORS.primaryDim, VELOX_COLORS.background]} style={StyleSheet.absoluteFill} />
           <SafeAreaView style={styles.safeArea}>
             
-            {/* ✅ CUSTOM HEADER SHOWING USER & WP */}
             <View style={styles.topBar}>
                 <View>
                     <Text style={styles.topUser}>{currentUser}</Text>
@@ -99,7 +171,7 @@ export default function App() {
 
             <Header step={step} />
 
-            <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.content}>
+            <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
               <ScrollView contentContainerStyle={styles.scrollContent}>
                 
                 {step === 1 && (
@@ -125,7 +197,6 @@ export default function App() {
                   <View style={styles.stepContainer}>
                     <Text style={styles.title}>{t.review}</Text>
                     
-                    {/* ✅ PHOTO PREVIEW BUTTON */}
                     <TouchableOpacity style={styles.photoButton} onPress={() => setShowCamera(true)}>
                         {photoUri ? <Image source={{ uri: photoUri }} style={styles.thumb} /> : <View style={styles.cameraIcon} />}
                         <Text style={styles.photoText}>{photoUri ? "CHANGE PHOTO" : "ADD SITE PHOTO"}</Text>
@@ -142,6 +213,9 @@ export default function App() {
                 )}
               </ScrollView>
             </KeyboardAvoidingView>
+
+            <Footer />
+
           </SafeAreaView>
         </View>
       </TouchableWithoutFeedback>
@@ -152,7 +226,6 @@ export default function App() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: VELOX_COLORS.background },
   safeArea: { flex: 1 },
-  content: { flex: 1 },
   scrollContent: { flexGrow: 1, padding: 20, justifyContent: 'center' },
   stepContainer: { flex: 1, justifyContent: 'center', gap: 20, minHeight: 500 },
   textCenter: { alignItems: 'center', marginBottom: 20 },

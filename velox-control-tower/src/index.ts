@@ -1,31 +1,116 @@
 import express from 'express';
+import dotenv from 'dotenv';
+import cors from 'cors';
 import path from 'path';
-import reportRoutes from './routes/reportRoutes';
-import { initDB } from './db/database';
+import fs from 'fs';
+import chokidar from 'chokidar';
+import sqlite3 from 'sqlite3';
+import { open } from 'sqlite';
+
+// Controllers
 import { renderDashboard } from './controllers/dashboardController';
+import { submitReport } from './controllers/reportController'; 
+import { renderMissionControl } from './controllers/missionControlController'; 
+
+// Services
+import { processPdfReport } from './services/geminiService'; // ✅ Import new service
+
+// Routes
+import reportRoutes from './routes/reportRoutes';
+import { initDB, saveConsent } from './db/database';
+
+dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const port = process.env.PORT || 3000;
+const PUBLIC_HOST = "34.51.236.211"; 
 
+app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use('/files', express.static(path.join(process.cwd(), 'ACC_Sync')));
 
-// 1. ✅ STATIC FILES: This makes your PDF and Photos accessible to the browser
-// URL: http://localhost:3000/files/MyReport.pdf
-const ACC_FOLDER = path.join(process.cwd(), 'ACC_Sync');
-app.use('/files', express.static(ACC_FOLDER));
-
-// 2. ROUTES
-app.use('/submit', reportRoutes);
+// Routes
 app.get('/', renderDashboard);
+app.get('/mission-control', renderMissionControl);
+app.use('/submit', reportRoutes);
 
-// 3. START SERVER
-app.listen(PORT, async () => { 
+app.post('/api/consent', async (req, res) => {
     try {
-        await initDB();
-        console.log(`🚀 Velox Systems Active on http://localhost:${PORT}`);
-        console.log(`📂 ACC Sync Folder: ${ACC_FOLDER}`);
-        console.log(`📊 LIVE DASHBOARD: http://localhost:${PORT}`);
+        await saveConsent(req.body);
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: "Consent failed" }); }
+});
+
+// --- 📂 SMART DROP ZONE LOGIC ---
+const INBOX_DIR = path.join(process.cwd(), 'ACC_Sync/Mission_Control_Inbox');
+const PROCESSED_DIR = path.join(process.cwd(), 'ACC_Sync/Mission_Control_Processed');
+
+const processInboxFile = async (filePath: string) => {
+    if (path.basename(filePath).startsWith('.')) return;
+
+    try {
+        const ext = path.extname(filePath).toLowerCase();
+        console.log(`📨 Detected ${ext} file: ${path.basename(filePath)}`);
+
+        let data = null;
+
+        // --- STRATEGY A: It's a JSON file (Direct Upload) ---
+        if (ext === '.json') {
+            const rawData = fs.readFileSync(filePath, 'utf-8');
+            if (rawData) data = JSON.parse(rawData);
+        }
+        // --- STRATEGY B: It's a PDF (AI Extraction) ---
+        else if (ext === '.pdf') {
+            console.log("🤖 Asking Gemini to read the PDF...");
+            data = await processPdfReport(filePath);
+        } 
+        else {
+            console.log("⚠️ Unsupported file type. Skipping.");
+            return;
+        }
+
+        // --- SAVE TO DATABASE ---
+        if (data && data.meta && data.mainActivity) {
+            const db = await open({
+                filename: path.join(process.cwd(), 'velox_core.db'),
+                driver: sqlite3.Database
+            });
+
+            await db.run(
+                `INSERT INTO daily_summaries (report_date, prepared_by, report_json) VALUES (?, ?, ?)`,
+                [data.meta.date, data.meta.preparedBy, JSON.stringify(data)]
+            );
+
+            console.log("✅ Mission Control Updated Successfully!");
+            
+            // Move to Processed
+            const newPath = path.join(PROCESSED_DIR, `${Date.now()}_${path.basename(filePath)}`);
+            fs.renameSync(filePath, newPath);
+            console.log(`📦 Archived to Processed folder.`);
+        } else {
+            console.error("❌ Data Extraction Failed or Invalid Format.");
+        }
+
     } catch (error) {
-        console.error("❌ Failed to start Database:", error);
+        console.error("❌ Error processing file:", error);
     }
+};
+
+// Start Watcher
+chokidar.watch(INBOX_DIR, { 
+    ignoreInitial: true, 
+    persistent: true,
+    awaitWriteFinish: { stabilityThreshold: 2000, pollInterval: 100 }
+}).on('add', processInboxFile);
+
+// Start Server
+app.listen(port, async () => {
+    await initDB();
+    console.log(`🚀 VELOX CORE ONLINE`);
+    console.log(`---------------------------------------------`);
+    console.log(`📥 DROP ZONE:         ${INBOX_DIR}`);
+    console.log(`📊 FIELD DASHBOARD:   http://${PUBLIC_HOST}:${port}`);
+    console.log(`🌌 MISSION CONTROL:   http://${PUBLIC_HOST}:${port}/mission-control`);
+    console.log(`---------------------------------------------`);
 });

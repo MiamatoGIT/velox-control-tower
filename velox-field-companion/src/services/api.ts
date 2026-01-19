@@ -2,7 +2,7 @@ import axios from 'axios';
 import { Platform } from 'react-native'; // ✅ Import Platform
 
 // ⚠️ KEEP YOUR IP ADDRESS HERE
-const API_URL = 'http://192.168.1.128:3000'; 
+const API_URL = "http://34.51.236.211:3000"; // <-- HARDCODE THIS
 
 export const uploadReport = async (data: any, audioUri?: string, photoUri?: string) => {
     try {
