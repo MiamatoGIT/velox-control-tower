@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import multer from 'multer';
-import { submitReport } from '../controllers/reportController';
+// ✅ ADD deleteReport to the import
+import { submitReport, deleteReport } from '../controllers/reportController';
 import path from 'path';
 import fs from 'fs';
 
 const router = Router();
 
-// Configure Storage
+// Configure Storage (YOUR ORIGINAL LOGIC PRESERVED)
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
         // Determine folder based on file type
@@ -29,12 +30,18 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-// ✅ UPDATED: Allow up to 5 photos
+// Allow up to 5 photos
 const uploadFields = upload.fields([
     { name: 'audio', maxCount: 1 },
     { name: 'photo', maxCount: 5 } 
 ]);
 
+// ✅ YOUR ORIGINAL UPLOAD ROUTE
 router.post('/', uploadFields, submitReport);
+
+// ✅ NEW DELETE ROUTE
+// Note: Since this router is likely mounted at '/submit' or similar in index.ts,
+// we will add a specific path so it doesn't conflict.
+router.delete('/logs/:id', deleteReport);
 
 export default router;

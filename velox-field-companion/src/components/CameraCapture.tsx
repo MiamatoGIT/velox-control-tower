@@ -51,19 +51,28 @@ export const CameraCapture = ({ onPhotoTaken, onClose }: CameraCaptureProps) => 
             </View>
           </View>
         ) : (
-          // CAMERA SCREEN
-          <CameraView style={styles.camera} ref={cameraRef} facing="back">
+          // CAMERA SCREEN (FIXED)
+          <View style={{ flex: 1 }}>
+            {/* 1. Camera is now a self-closing tag in the background */}
+            <CameraView 
+                style={StyleSheet.absoluteFill} 
+                ref={cameraRef} 
+                facing="back" 
+            />
+            
+            {/* 2. Overlay is now a SIBLING, sitting on top */}
             <View style={styles.overlay}>
               <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
                 <Text style={styles.closeText}>CANCEL</Text>
               </TouchableOpacity>
+              
               <View style={styles.bottomBar}>
                 <TouchableOpacity onPress={takePicture} style={styles.shutterBtn}>
                   <View style={styles.shutterInner} />
                 </TouchableOpacity>
               </View>
             </View>
-          </CameraView>
+          </View>
         )}
       </View>
     </Modal>
@@ -73,8 +82,15 @@ export const CameraCapture = ({ onPhotoTaken, onClose }: CameraCaptureProps) => 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' },
-  camera: { flex: 1 },
-  overlay: { flex: 1, justifyContent: 'space-between', padding: 20 },
+  
+  // Overlay now covers the whole screen on top of the camera
+  overlay: { 
+    flex: 1, 
+    justifyContent: 'space-between', 
+    padding: 20,
+    backgroundColor: 'transparent' // Ensure camera shows through
+  },
+  
   closeBtn: { marginTop: 40, alignSelf: 'flex-start', padding: 10, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 8 },
   closeText: { color: '#fff', fontWeight: 'bold' },
   bottomBar: { alignItems: 'center', marginBottom: 30 },

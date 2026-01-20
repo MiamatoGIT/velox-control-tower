@@ -1,0 +1,880 @@
+================================================================================
+PART 1: PROJECT FILE STRUCTURE
+================================================================================
+
+├── velox-control-tower/                # Backend
+│   ├── ACC_Sync/Site_Photos/           # Synced folder
+│   ├── docs/
+│   │   └── DATABASE_SCHEMA.md
+│   ├── public/
+│   │   └── index.html                  # Dashboard UI
+│   ├── src/
+│   │   ├── controllers/
+│   │   │   ├── dashboardController.ts
+│   │   │   └── reportController.ts     # Core logic for uploads
+│   │   ├── db/
+│   │   │   └── database.ts             # SQLite connection & Schema
+│   │   ├── routes/
+│   │   │   └── reportRoutes.ts         # Express routes
+│   │   ├── scripts/
+│   │   │   ├── checkSchema.ts
+│   │   │   ├── inspectDB.ts
+│   │   │   └── resetDB.ts
+│   │   ├── services/
+│   │   │   ├── geminiService.ts        # AI Logic
+│   │   │   └── pdfService.ts
+│   │   └── index.ts                    # Server Entry Point
+│   ├── temp_uploads/
+│   ├── .env
+│   ├── checkModels.ts
+│   ├── package.json
+│   └── velox_core.db
+│
+└── velox-field-companion/              # Frontend
+    ├── src/
+    │   ├── components/
+    │   │   ├── AudioVisualizer.tsx
+    │   │   ├── CameraCapture.tsx       # Camera Logic (Decoupled)
+    │   │   ├── Header.tsx
+    │   │   ├── InputCard.tsx
+    │   │   ├── LanguagePicker.tsx
+    │   │   └── LoginScreen.tsx
+    │   ├── data/
+    │   │   └── allocations.ts          # Work Packages
+    │   ├── hooks/
+    │   │   └── useAudioRecorder.ts     # Voice Logic
+    │   ├── services/
+    │   │   └── api.ts                  # Axios Configuration
+    │   └── utils/
+    │       └── translations.ts
+    ├── App.tsx                         # Main Navigation/Layout
+    ├── app.json
+    └── package.json
+
+================================================================================
+PART 2: CRITICAL SOURCE CODE (BACKEND)
+================================================================================
+
+=== velox-control-tower/package.json ===
+{
+  "name": "velox-control-tower",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.0.8",
+    "@types/pdfkit": "^0.17.4",
+    "express": "^5.2.1",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "google-translate-api-x": "^10.7.2",
+    "multer": "^2.0.2",
+    "pdfkit": "^0.17.2",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^5.1.7"
+  }
+}
+
+=== velox-control-tower/src/index.ts ===
+import express from 'express';
+import path from 'path';
+import reportRoutes from './routes/reportRoutes';
+import { initDB } from './db/database';
+import { renderDashboard } from './controllers/dashboardController';
+
+const app = express();
+const PORT = 3000;
+
+app.use(express.json());
+
+// 1. ✅ STATIC FILES: This makes your PDF and Photos accessible to the browser
+// URL: http://localhost:3000/files/MyReport.pdf
+const ACC_FOLDER = path.join(process.cwd(), 'ACC_Sync');
+app.use('/files', express.static(ACC_FOLDER));
+
+// 2. ROUTES
+app.use('/submit', reportRoutes);
+app.get('/', renderDashboard);
+
+// 3. START SERVER
+app.listen(PORT, async () => { 
+    try {
+        await initDB();
+        console.log(`🚀 Velox Systems Active on http://localhost:${PORT}`);
+        console.log(`📂 ACC Sync Folder: ${ACC_FOLDER}`);
+        console.log(`📊 LIVE DASHBOARD: http://localhost:${PORT}`);
+    } catch (error) {
+        console.error("❌ Failed to start Database:", error);
+    }
+});
+
+=== velox-control-tower/src/db/database.ts ===
+import sqlite3 from 'sqlite3';
+import { open, Database } from 'sqlite';
+import path from 'path';
+
+const DB_PATH = path.join(process.cwd(), 'velox_core.db');
+let db: Database | null = null;
+
+export const initDB = async () => {
+  db = await open({ filename: DB_PATH, driver: sqlite3.Database });
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS field_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+      work_package_id TEXT,
+      user_name TEXT,
+      status TEXT,
+      
+      -- ⚠️ NEW: We keep these for backwards compatibility / quick sums
+      quantity_value REAL, 
+      quantity_unit TEXT,
+      
+      -- ✅ NEW: The detailed list
+      materials_json TEXT, 
+
+      comments TEXT,
+      language TEXT,
+      pdf_path TEXT,
+      audio_path TEXT,
+      photo_path TEXT,
+      synced_to_cloud INTEGER DEFAULT 0
+    );
+  `);
+  
+  await db.exec(`CREATE INDEX IF NOT EXISTS idx_wp_id ON field_logs(work_package_id);`);
+  console.log("💾 Velox Core Database Online:", DB_PATH);
+  return db;
+};
+
+export const saveLog = async (data: any) => {
+  if (!db) await initDB();
+  
+  // Calculate a "Total Quantity" just for the dashboard summary (sum of all numbers)
+  // e.g., 20 sockets + 50m cable = 70 (rough estimate for the graph)
+  let totalVal = 0;
+  let primaryUnit = "Mixed";
+  
+  if (data.materials && data.materials.length > 0) {
+      totalVal = data.materials.reduce((acc: number, item: any) => acc + (item.quantity || 0), 0);
+      primaryUnit = data.materials[0].unit; // Grab the first unit
+  }
+
+  await db?.run(
+    `INSERT INTO field_logs (
+      work_package_id, user_name, status, 
+      quantity_value, quantity_unit, materials_json,
+      comments, language, pdf_path, audio_path, photo_path
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, 
+    [
+      data.workPackage || "UNKNOWN_WP",
+      data.user || "Unknown",
+      data.taskStatus,
+      totalVal,    // Saved for quick sorting
+      primaryUnit, // Saved for quick sorting
+      JSON.stringify(data.materials || []), // ✅ SAVE THE LIST
+      data.comments,
+      data.lang,
+      data.pdfPath,
+      data.audioPath || null,
+      data.photoPath || null
+    ]
+  );
+  console.log(`💾 Saved with Materials: ${JSON.stringify(data.materials || [])}`);
+};
+
+// ... keep getStats as is ...
+export const getStats = async () => {
+    if (!db) await initDB();
+    const result = await db?.get(`
+        SELECT COUNT(*) as total_reports, SUM(quantity_value) as total_installed FROM field_logs
+    `);
+    return result;
+};
+
+=== velox-control-tower/src/controllers/reportController.ts ===
+import { Request, Response } from 'express';
+import { generateReportPDF } from '../services/pdfService';
+import { processAudioReport } from '../services/geminiService';
+import { saveLog, getStats } from '../db/database';
+import path from 'path';
+import fs from 'fs';
+
+const ROOT_DIR = process.cwd();
+const ACC_FOLDER = path.join(ROOT_DIR, 'ACC_Sync');
+const PHOTOS_FOLDER = path.join(ACC_FOLDER, 'Site_Photos');
+
+// Ensure folders exist
+if (!fs.existsSync(ACC_FOLDER)) fs.mkdirSync(ACC_FOLDER);
+if (!fs.existsSync(PHOTOS_FOLDER)) fs.mkdirSync(PHOTOS_FOLDER);
+
+export const submitReport = async (req: Request, res: Response): Promise<void> => {
+    try {
+        console.log("--- 📨 INCOMING REPORT ---");
+
+        // 1. CAPTURE FILES
+        const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+        const audioFile = files?.['audio']?.[0];
+        const tempPhoto = files?.['photo']?.[0];
+
+        // 2. PROCESS PHOTO (Move from Temp -> Permanent Folder)
+        let finalPhotoPath = null;
+        if (tempPhoto) {
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            // Clean the username to be filename-safe
+            const safeUser = (req.body.user || "User").replace(/[^a-zA-Z0-9]/g, '');
+            const newFilename = `IMG_${timestamp}_${safeUser}.jpg`;
+            
+            finalPhotoPath = path.join(PHOTOS_FOLDER, newFilename);
+            
+            // Move file
+            fs.renameSync(tempPhoto.path, finalPhotoPath);
+            console.log("📸 Photo Secured:", newFilename);
+        }
+
+        // 3. INITIALIZE DATA OBJECT
+        let reportData = {
+            taskStatus: req.body.taskStatus || "UNKNOWN",
+            // We use a temporary string for quantity, will be overwritten by AI or Manual logic
+            quantity: req.body.manualQty || req.body.quantity || "N/A",
+            comments: req.body.manualComments || req.body.comments || "No comments",
+            lang: req.body.lang || "en",
+            workPackage: req.body.workPackage || "UNKNOWN_WP",
+            user: req.body.user || "Unknown User",
+            audioPath: audioFile ? audioFile.path : null,
+            photoPath: finalPhotoPath, // ✅ Linked to the permanent file
+            materials: [] as any[] // ✅ Initialize empty array for structured items
+        };
+
+        // 4. AI PROCESSING
+        if (audioFile) {
+            console.log("🎧 Processing Audio...");
+            try {
+                const aiData = await processAudioReport(audioFile.path, audioFile.mimetype);
+                console.log("🧠 Brain Result:", aiData);
+
+                // ✅ CAPTURE STRUCTURED MATERIALS LIST
+                if (aiData.materials && Array.isArray(aiData.materials) && aiData.materials.length > 0) {
+                    reportData.materials = aiData.materials;
+                    
+                    // Create a summary string for the PDF "Quantity" box
+                    const summary = aiData.materials.map((m: any) => `${m.quantity} ${m.unit} ${m.name}`).join(', ');
+                    reportData.quantity = summary; 
+                } else {
+                    // Fallback if AI didn't find materials but audio exists
+                    // We parse the manual input just in case
+                    const qtyString = req.body.manualQty || "";
+                    if (qtyString) {
+                         const match = qtyString.match(/(\d+(\.\d+)?)/);
+                         const val = match ? parseFloat(match[0]) : 0;
+                         const unit = qtyString.replace(/[0-9.]/g, '').trim() || "Unit";
+                         reportData.materials = [{ name: "Manual Input", quantity: val, unit: unit }];
+                    }
+                }
+
+                if (aiData.comments && aiData.comments !== "AI Processing Failed") {
+                    reportData.comments = aiData.comments;
+                }
+                if (aiData.originalLanguage && aiData.originalLanguage !== "Unknown") {
+                    reportData.lang = aiData.originalLanguage;
+                }
+
+            } catch (e) { 
+                console.error("AI Error:", e); 
+            }
+        } else {
+            // 🛑 MANUAL FALLBACK (No Audio)
+            // If the user typed "50 Meters" manually, we treat it as one material item
+            const qtyString = req.body.manualQty || "";
+            const match = qtyString.match(/(\d+(\.\d+)?)/);
+            const val = match ? parseFloat(match[0]) : 0;
+            const unit = qtyString.replace(/[0-9.]/g, '').trim() || "Unit";
+            
+            reportData.materials = [{ name: "Manual Input", quantity: val, unit: unit }];
+        }
+
+        // 5. GENERATE PDF
+        const filename = await generateReportPDF(reportData, reportData.comments, ACC_FOLDER);
+        const pdfPath = path.join(ACC_FOLDER, filename);
+
+        // 6. SAVE TO DATABASE
+        // The saveLog function in database.ts will handle JSON.stringify for reportData.materials
+        await saveLog({
+            ...reportData,
+            pdfPath: pdfPath
+        });
+
+        // 7. GET LIVE STATS
+        const stats = await getStats();
+        console.log(`📊 STATS: ${stats?.total_installed || 0} Units / ${stats?.total_reports || 0} Reports`);
+
+        res.json({ status: 'success', file: filename, data: reportData });
+
+    } catch (error) {
+        console.error("Error processing report:", error);
+        res.status(500).json({ status: 'error', message: 'Internal Server Error' });
+    }
+};
+
+=== velox-control-tower/src/routes/reportRoutes.ts ===
+import { Router } from 'express';
+import multer from 'multer';
+import { submitReport } from '../controllers/reportController';
+import path from 'path';
+import fs from 'fs';
+
+const router = Router();
+
+// Configure Multer (Where to save temp files)
+const uploadDir = path.join(process.cwd(), 'temp_uploads');
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
+
+const upload = multer({ dest: uploadDir });
+
+// ✅ CORRECT ROUTE: Accepts both 'audio' and 'photo' files
+router.post('/', upload.fields([
+    { name: 'audio', maxCount: 1 },
+    { name: 'photo', maxCount: 1 }
+]), submitReport);
+
+export default router;
+
+=== velox-control-tower/src/services/geminiService.ts ===
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import dotenv from 'dotenv';
+import fs from 'fs'; // ✅ REQUIRED: This was missing before!
+
+dotenv.config();
+
+// ✅ RECOMMENDATION: Try "gemini-1.5-flash" first. 
+// If it fails with a permission error, switch back to "gemini-robotics-er-1.5-preview"
+const MODEL_NAME = "gemini-robotics-er-1.5-preview"; 
+const API_KEY = process.env.GEMINI_API_KEY;
+
+if (!API_KEY) {
+    console.error("❌ GEMINI_API_KEY is missing in .env file");
+    process.exit(1);
+}
+
+const genAI = new GoogleGenerativeAI(API_KEY);
+const model = genAI.getGenerativeModel({ model: MODEL_NAME });
+
+export const processAudioReport = async (filePath: string, mimeType: string): Promise<any> => {
+    try {
+        console.log(`📤 Sending audio to Gemini (${MODEL_NAME})...`);
+
+        // 1. ✅ THE FIX: Read the file into a buffer
+        // (This block was missing in the previous version, causing the crash)
+        const fileBuffer = fs.readFileSync(filePath);
+        const base64Audio = fileBuffer.toString('base64');
+
+        // 2. THE PROMPT
+        const prompt = `
+        You are a construction site data analyst. 
+        Listen to this audio report from a foreman.
+
+        Extract the following structured data as JSON:
+        1. "materials": An array of items installed. 
+           - Separate different items (e.g., "20 sockets and 50m cable" -> 2 items).
+           - "name": The object (e.g., "Wall Socket", "Cat6 Cable"). Clean up the name.
+           - "quantity": The number (numeric).
+           - "unit": The unit (e.g., "pcs", "m", "kg"). Use "pcs" if countable.
+        2. "comments": A brief summary of the work or issues (max 15 words).
+        3. "originalLanguage": The language spoken.
+
+        Example Output:
+        {
+          "materials": [
+            { "name": "Power Socket", "quantity": 20, "unit": "pcs" },
+            { "name": "Cat6 Cable", "quantity": 150, "unit": "m" }
+          ],
+          "comments": "Installation complete in Zone B.",
+          "originalLanguage": "English"
+        }
+
+        If no quantity/materials are mentioned, return an empty "materials" array [].
+        Return ONLY valid JSON.
+        `;
+
+        // 3. SEND TO GEMINI
+        const result = await model.generateContent([
+            prompt, 
+            { 
+                inlineData: { 
+                    data: base64Audio, 
+                    mimeType: mimeType 
+                } 
+            }
+        ]);
+
+        const responseText = result.response.text();
+        console.log("📥 Gemini Response:", responseText);
+
+        // 4. CLEAN JSON
+        const cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+        return JSON.parse(cleanJson);
+
+    } catch (error) {
+        console.error("❌ Gemini Error:", error);
+        return { 
+            materials: [], 
+            comments: "AI Processing Failed", 
+            originalLanguage: "Unknown" 
+        };
+    }
+};
+
+=== velox-control-tower/checkModels.ts ===
+import { GoogleGenerativeAI } from "@google/generative-ai";
+
+const API_KEY = "AIzaSyD5tWz-mi37hBWAZdRgkLigKzameLIPIFY"; 
+const genAI = new GoogleGenerativeAI(API_KEY);
+
+async function listModels() {
+  try {
+    console.log("🔍 Scanning for available Gemini models...");
+    const modelResponse = await genAI.getGenerativeModel({ model: "gemini-1.5-flash" }); // Dummy init
+    
+    // We access the underlying API to list models
+    // Note: The SDK doesn't always have a clean 'listModels' helper exposed easily in all versions, 
+    // so we will try the simplest fetch if the SDK fails, but let's try the SDK method first if available.
+    // Actually, for immediate results, we can just use a standard fetch to the endpoint.
+    
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${API_KEY}`);
+    const data = await response.json();
+
+    if (data.models) {
+        console.log("\n✅ AVAILABLE MODELS FOR YOU:");
+        data.models.forEach((m: any) => {
+            if (m.name.includes("1.5")) { // Only show relevant 1.5 models
+                console.log(`- ${m.name.replace('models/', '')}`); 
+                console.log(`  (Supports: ${m.supportedGenerationMethods.join(', ')})`);
+            }
+        });
+    } else {
+        console.error("❌ No models found. Raw response:", data);
+    }
+
+  } catch (error) {
+    console.error("❌ Error listing models:", error);
+  }
+}
+
+listModels();
+
+=== velox-control-tower/package.json ===
+{
+  "name": "velox-control-tower",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "npx tsx src/index.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "multer": "^2.0.2",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^5.1.7"
+  }
+}
+
+=== velox-field-companion/.env ===
+# ✅ Must start with EXPO_PUBLIC_ to be visible in the app
+EXPO_PUBLIC_API_URL=http://34.51.236.211:3000
+
+
+================================================================================
+PROJECT: VELOX CONTROL TOWER (v3.2 - Live Alerting & PDF Sync)
+DATE: 2026-01-19
+STATUS: STABLE (PDF Generation & Delete Route Active)
+================================================================================
+
+[FILE] package.json
+--------------------------------------------------------------------------------
+{
+  "name": "velox-control-tower",
+  "version": "1.0.0",
+  "description": "Velox Autonomous Construction Control",
+  "main": "src/index.ts",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
+    "test:pdf": "tsx src/scripts/test_pdf_gen.ts"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "multer": "^1.4.5-lts.1",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^5.1.6",
+    "@google/generative-ai": "^0.1.3",
+    "pdfkit": "^0.13.0",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3",
+    "@types/node": "^20.10.0",
+    "@types/express": "^4.17.21",
+    "@types/cors": "^2.8.17",
+    "@types/multer": "^1.4.11",
+    "@types/pdfkit": "^0.13.3"
+  }
+}
+
+[FILE] .env (TEMPLATE - DO NOT COMMIT REAL KEYS)
+--------------------------------------------------------------------------------
+PORT=3000
+# ⚠️ REPLACE WITH NEW KEY (Old one was leaked)
+GEMINI_API_KEY=AIzaSy...
+
+[FILE] src/index.ts
+--------------------------------------------------------------------------------
+import express from 'express';
+import cors from 'cors';
+import path from 'path';
+import { initDB } from './db/database';
+import reportRoutes from './routes/reportRoutes';
+// ... other imports (consent, dashboard) ...
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+app.use(express.static('public')); 
+app.use('/ACC_Sync', express.static(path.join(process.cwd(), 'ACC_Sync')));
+
+// Database Init
+initDB();
+
+// Routes
+// Note: reportRoutes handles POST /submit and DELETE /logs/:id
+// Since we mount it at /submit, the delete URL is /submit/logs/:id
+app.use('/submit', reportRoutes); 
+
+app.listen(PORT, () => {
+    console.log(`🚀 Velox Control Tower running on port ${PORT}`);
+    console.log(`📡 ACC Sync Folder: ${path.join(process.cwd(), 'ACC_Sync')}`);
+});
+
+[FILE] src/db/database.ts
+--------------------------------------------------------------------------------
+import sqlite3 from 'sqlite3';
+import { open } from 'sqlite';
+import path from 'path';
+
+const DB_PATH = path.join(process.cwd(), 'velox_core.db');
+
+export const initDB = async () => {
+    try {
+        const db = await open({ filename: DB_PATH, driver: sqlite3.Database });
+        console.log(`💾 Velox Core Database Online: ${DB_PATH}`);
+
+        await db.exec(`
+            CREATE TABLE IF NOT EXISTS field_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                work_package_id TEXT,
+                user_name TEXT,
+                status TEXT,
+                materials_json TEXT, 
+                quantity_value TEXT,
+                quantity_unit TEXT,
+                comments TEXT,
+                original_lang TEXT,
+                pdf_path TEXT,
+                audio_path TEXT,
+                photo_path TEXT,
+                blocker_reason TEXT
+            )
+        `);
+        
+        // Self-Healing
+        try { await db.exec("ALTER TABLE field_logs ADD COLUMN blocker_reason TEXT;"); } catch (e) {}
+
+        return db;
+    } catch (error) {
+        console.error("❌ Database Init Error:", error);
+    }
+};
+
+export const saveLog = async (data: any) => {
+    const db = await open({ filename: DB_PATH, driver: sqlite3.Database });
+    const matJson = JSON.stringify(data.materials || []);
+    const firstMat = data.materials && data.materials.length > 0 ? data.materials[0] : { quantity: 0, unit: 'mixed' };
+    const finalQty = data.quantity || firstMat.quantity;
+
+    const result = await db.run(
+        `INSERT INTO field_logs (
+            work_package_id, user_name, status, 
+            materials_json, quantity_value, quantity_unit,
+            comments, original_lang, pdf_path, audio_path, photo_path,
+            blocker_reason
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+            data.workPackage, data.user, data.taskStatus,
+            matJson, finalQty, firstMat.unit,
+            data.comments, data.lang, data.pdfPath, data.audioPath, data.photoPath,
+            data.blocker || null 
+        ]
+    );
+    return result.lastID; // ✅ Returns ID for PDF linking
+};
+
+export const updateLogPdf = async (id: number, pdfFilename: string) => {
+    const db = await open({ filename: DB_PATH, driver: sqlite3.Database });
+    await db.run('UPDATE field_logs SET pdf_path = ? WHERE id = ?', [pdfFilename, id]);
+    console.log(`🔄 Database Updated: Log #${id} linked to PDF ${pdfFilename}`);
+};
+
+export const deleteLog = async (id: number) => {
+    const db = await open({ filename: DB_PATH, driver: sqlite3.Database });
+    const result = await db.run('DELETE FROM field_logs WHERE id = ?', [id]);
+    return result.changes ? result.changes > 0 : false;
+};
+
+// ... other getters (getLogs, getStats) ...
+
+[FILE] src/controllers/reportController.ts
+--------------------------------------------------------------------------------
+import { Request, Response } from 'express';
+import { saveLog, updateLogPdf, deleteLog } from '../db/database'; 
+import { processAudioReport } from '../services/geminiService';
+import { generateReportPDF } from '../services/pdfService';
+import path from 'path';
+import fs from 'fs';
+
+interface MulterFiles { [fieldname: string]: Express.Multer.File[]; }
+
+export const submitReport = async (req: Request, res: Response) => {
+    try {
+        console.log("📨 Receiving Report...");
+        const files = req.files as MulterFiles;
+        const body = req.body;
+        const audioFile = files['audio'] ? files['audio'][0] : null;
+        const photoFiles = files['photo'] || [];
+
+        // 1. AI Processing
+        let aiData = { materials: [], blocker: null, comments: "", originalLanguage: "en" };
+        if (audioFile && audioFile.mimetype !== 'application/octet-stream') {
+             aiData = await processAudioReport(audioFile.path, audioFile.mimetype);
+        }
+
+        // 2. Data Merging
+        const finalBlocker = body.blocker || aiData.blocker; 
+        const finalComments = body.comments || aiData.comments;
+        let photoPathEntry = null;
+        if (photoFiles.length > 0) { photoPathEntry = photoFiles[0].path; }
+
+        const reportData = {
+            workPackage: body.workPackage || "UNKNOWN-WP",
+            user: body.user || "Unknown User",
+            taskStatus: finalBlocker ? "BLOCKED" : (body.taskStatus || "YES"), 
+            materials: aiData.materials,
+            comments: finalComments,
+            blocker: finalBlocker,
+            lang: body.lang || aiData.originalLanguage || "en",
+            pdfPath: null,
+            audioPath: audioFile ? audioFile.path : null,
+            photoPath: photoPathEntry,
+            quantity: body.quantity || "0"
+        };
+
+        // 3. Save DB & Get ID
+        const logId = await saveLog(reportData);
+        if (!logId) throw new Error("Failed to save log");
+
+        // 4. Generate PDF & Update DB
+        try {
+            const outputDir = path.join(process.cwd(), 'ACC_Sync');
+            if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
+
+            const summaryString = `AI Analysis: ${finalBlocker ? 'BLOCKER: ' + finalBlocker : 'Progress Validated.'}`;
+            const pdfFilename = await generateReportPDF(reportData, summaryString, outputDir);
+            
+            await updateLogPdf(logId, pdfFilename);
+            console.log(`✅ PDF Created & Linked: ${pdfFilename}`);
+        } catch (pdfError) {
+            console.error("⚠️ PDF Generation failed:", pdfError);
+        }
+
+        res.json({ success: true, data: reportData });
+    } catch (error) {
+        console.error("❌ Submission Error:", error);
+        res.status(500).send("Server Error");
+    }
+};
+
+export const deleteReport = async (req: Request, res: Response) => {
+    try {
+        const id = parseInt(req.params.id);
+        const success = await deleteLog(id);
+        if (success) {
+            console.log(`🗑️ Deleted Log #${id}`);
+            res.json({ success: true, message: `Log #${id} deleted` });
+        } else {
+            res.status(404).json({ error: "Log not found" });
+        }
+    } catch (error) {
+        res.status(500).send("Server Error");
+    }
+};
+
+[FILE] src/routes/reportRoutes.ts
+--------------------------------------------------------------------------------
+import { Router } from 'express';
+import multer from 'multer';
+import { submitReport, deleteReport } from '../controllers/reportController';
+import path from 'path';
+import fs from 'fs';
+
+const router = Router();
+
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        let folder = 'ACC_Sync'; 
+        if (file.fieldname === 'audio') folder = 'ACC_Sync/Audio_Logs';
+        if (file.fieldname === 'photo') folder = 'ACC_Sync/Site_Photos';
+        const fullPath = path.join(process.cwd(), folder);
+        fs.mkdirSync(fullPath, { recursive: true });
+        cb(null, fullPath);
+    },
+    filename: (req, file, cb) => {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const uniqueSuffix = Math.round(Math.random() * 1E9);
+        const ext = path.extname(file.originalname);
+        cb(null, `${file.fieldname}_${timestamp}_${uniqueSuffix}${ext}`);
+    }
+});
+
+const upload = multer({ storage });
+const uploadFields = upload.fields([{ name: 'audio', maxCount: 1 }, { name: 'photo', maxCount: 5 }]);
+
+router.post('/', uploadFields, submitReport);
+router.delete('/logs/:id', deleteReport);
+
+export default router;
+
+[FILE] src/services/pdfService.ts
+--------------------------------------------------------------------------------
+import PDFDocument from 'pdfkit';
+import fs from 'fs';
+import path from 'path';
+
+const VELOX_GREEN = '#00ff9d';
+const VELOX_DARK = '#0f172a';
+const BOX_BG = '#f8fafc';
+const BOX_BORDER = '#cbd5e1';
+const TEXT_DARK = '#334155';
+const TEXT_LIGHT = '#94a3b8';
+
+export const generateReportPDF = (data: any, aiSummary: string, outputFolder: string): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const doc = new PDFDocument({ margins: { top: 50, bottom: 50, left: 50, right: 50 } });
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const langCode = data.lang ? data.lang.toUpperCase() : 'EN';
+        const filename = `DSAR_${timestamp}_${langCode}.pdf`;
+        const filePath = path.join(outputFolder, filename);
+
+        const stream = fs.createWriteStream(filePath);
+        doc.pipe(stream);
+
+        // Header
+        doc.rect(0, 0, 612, 120).fill(VELOX_DARK);
+        doc.fontSize(24).font('Helvetica-Bold').fillColor(VELOX_GREEN).text('VELOX', 50, 40, { continued: true });
+        doc.fillColor('#ffffff').font('Helvetica').text('  |  AUTONOMOUS CONTROL TOWER');
+        doc.fontSize(9).fillColor('#94a3b8').text(`GENERATED: ${new Date().toLocaleString()}`, 50, 75);
+        doc.text(`REF: ${filename}`, 50, 90);
+        doc.moveDown(4);
+
+        // 1. Executive Summary
+        const startY = 140;
+        doc.fillColor(TEXT_DARK).fontSize(12).font('Helvetica-Bold').text('1. EXECUTIVE SUMMARY', 50, startY);
+        doc.rect(50, startY + 20, 510, 60).fillAndStroke(BOX_BG, BOX_BORDER);
+        
+        doc.fillColor(TEXT_LIGHT).fontSize(8).text('FOREMAN / LEAD', 70, startY + 35);
+        doc.fillColor(TEXT_DARK).fontSize(11).text(data.user || "Unknown", 70, startY + 50);
+
+        doc.fillColor(TEXT_LIGHT).fontSize(8).text('ZONE / LOCATION', 240, startY + 35);
+        doc.fillColor(TEXT_DARK).fontSize(11).text(data.workPackage || "N/A", 240, startY + 50);
+
+        doc.fillColor(TEXT_LIGHT).fontSize(8).text('SOURCE LANGUAGE', 410, startY + 35);
+        doc.fillColor(TEXT_DARK).fontSize(11).text(langCode, 410, startY + 50);
+
+        // 2. Progress Validation
+        const progressY = startY + 100;
+        doc.fillColor(TEXT_DARK).fontSize(12).font('Helvetica-Bold').text('2. PROGRESS VALIDATION', 50, progressY);
+        const isComplete = data.taskStatus !== 'BLOCKED';
+        const statusColor = isComplete ? '#dcfce7' : '#fee2e2'; 
+        const statusText = isComplete ? '#166534' : '#991b1b'; 
+        const statusBorder = isComplete ? '#22c55e' : '#ef4444';
+
+        doc.rect(50, progressY + 20, 510, 50).fillAndStroke(statusColor, statusBorder);
+        doc.fillColor(statusText).fontSize(16).font('Helvetica-Bold')
+           .text(isComplete ? 'TASK COMPLETED' : 'TASK INCOMPLETE / BLOCKED', 50, progressY + 38, { align: 'center', width: 510 });
+
+        if (!isComplete && data.blocker) {
+             doc.fillColor('#991b1b').fontSize(10).text(`REASON: ${data.blocker}`, 50, progressY + 75, { align: 'center', width: 510 });
+        }
+
+        // 3. Quantity Log
+        const qtyY = progressY + 100; // Increased spacing if blocker text exists
+        doc.fillColor(TEXT_DARK).fontSize(12).font('Helvetica-Bold').text('3. QUANTITY LOG', 50, qtyY);
+        doc.rect(50, qtyY + 20, 510, 50).fillAndStroke('#ffffff', BOX_BORDER);
+        doc.fillColor(TEXT_LIGHT).fontSize(9).text('REPORTED QUANTITY', 70, qtyY + 40);
+        doc.fillColor(TEXT_DARK).fontSize(14).text(data.quantity || "0", 300, qtyY + 38);
+
+        // 4. Digital Transcript
+        const transcriptY = qtyY + 90;
+        doc.fillColor(TEXT_DARK).fontSize(12).font('Helvetica-Bold').text('4. DIGITAL TRANSCRIPT', 50, transcriptY);
+        
+        // Original Audio Box
+        doc.rect(50, transcriptY + 20, 245, 120).fillAndStroke(BOX_BG, BOX_BORDER);
+        doc.fillColor(TEXT_LIGHT).fontSize(8).text('ORIGINAL AUDIO / COMMENTS', 65, transcriptY + 35);
+        doc.fillColor(TEXT_DARK).fontSize(10).font('Helvetica-Oblique')
+           .text(`"${data.comments || ''}"`, 65, transcriptY + 55, { width: 215 });
+
+        // AI Box
+        doc.rect(315, transcriptY + 20, 245, 120).fillAndStroke('#f0fdf4', '#86efac');
+        doc.fillColor('#166534').fontSize(8).font('Helvetica-Bold').text('AI ANALYSIS (GEMINI)', 330, transcriptY + 35);
+        doc.fillColor('#14532d').fontSize(10).font('Helvetica')
+           .text(aiSummary, 330, transcriptY + 55, { width: 215 });
+
+        // Page 2: Photos
+        if (data.photoPath && fs.existsSync(data.photoPath)) {
+            doc.addPage();
+            doc.rect(0, 0, 612, 60).fill(VELOX_DARK);
+            doc.fontSize(14).fillColor(VELOX_GREEN).text('5. VISUAL EVIDENCE', 50, 25);
+            doc.rect(50, 80, 510, 400).stroke(BOX_BORDER);
+            try {
+                doc.image(data.photoPath, 55, 85, { fit: [500, 390], align: 'center' });
+            } catch(e) { doc.text("Image Error", 60, 100); }
+        }
+
+        doc.end();
+        stream.on('finish', () => resolve(filename));
+        stream.on('error', (err) => reject(err));
+    });
+};

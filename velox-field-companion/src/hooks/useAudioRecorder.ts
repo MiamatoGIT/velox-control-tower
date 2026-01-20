@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Audio } from 'expo-av';
 import { Alert } from 'react-native';
 
@@ -6,48 +6,65 @@ export const useAudioRecorder = () => {
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0); 
-  const [recordingUri, setRecordingUri] = useState<string | null>(null); // ✅ NEW: Store file path
-  const [permissionResponse, requestPermission] = Audio.usePermissions();
+  const [recordingUri, setRecordingUri] = useState<string | null>(null);
 
-  const startRecording = async () => {
-    try {
-      if (permissionResponse?.status !== 'granted') {
-        await requestPermission();
-      }
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+  useEffect(() => {
+    (async () => {
+      try {
+        await Audio.requestPermissionsAsync();
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: true,
+          playsInSilentModeIOS: true,
+        });
+      } catch (e) { console.error(e); }
+    })();
+  }, []);
 
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY,
-        (status) => {
-          if (status.metering) {
-            const db = status.metering;
-            setAudioLevel(Math.max(0, (db + 60) * 2.5)); 
-          }
-        },
-        100
-      );
-      setRecording(recording);
-      setIsRecording(true);
-      setRecordingUri(null); // Reset previous recording
-    } catch (err) {
-      Alert.alert('Error', 'Failed to start recording');
+  // Audio Level Monitor
+  useEffect(() => {
+    if (!recording) return;
+    const interval = setInterval(async () => {
+      try {
+        const status = await recording.getStatusAsync();
+        if (status.isRecording && status.metering !== undefined) {
+           const db = status.metering;
+           const level = Math.max(0, (db + 160) / 160); 
+           setAudioLevel(level);
+        }
+      } catch (e) {}
+    }, 100);
+    return () => clearInterval(interval);
+  }, [recording]);
+
+  const toggleRecording = async () => {
+    if (recording) {
+      try {
+        await recording.stopAndUnloadAsync();
+        const uri = recording.getURI();
+        setRecording(null);
+        setIsRecording(false);
+        setRecordingUri(uri);
+        setAudioLevel(0);
+      } catch (error) { console.error(error); }
+    } else {
+      try {
+        const { recording: newRecording } = await Audio.Recording.createAsync(
+          Audio.RecordingOptionsPresets.HIGH_QUALITY
+        );
+        setRecording(newRecording);
+        setIsRecording(true);
+        setRecordingUri(null);
+      } catch (error) { Alert.alert("Error", "Check microphone permissions"); }
     }
   };
 
-  const stopRecording = async () => {
-    if (!recording) return;
-    setIsRecording(false);
-    setAudioLevel(0);
-    await recording.stopAndUnloadAsync();
-    const uri = recording.getURI(); 
-    setRecordingUri(uri); // ✅ Capture the file path
-    setRecording(null);
+  // ✅ THIS FIXES THE CRASH
+  const resetRecording = () => {
+      setRecording(null);
+      setIsRecording(false);
+      setRecordingUri(null);
+      setAudioLevel(0);
   };
 
-  const toggleRecording = () => {
-    if (isRecording) stopRecording();
-    else startRecording();
-  };
-
-  return { isRecording, toggleRecording, audioLevel, recordingUri };
+  return { isRecording, toggleRecording, resetRecording, audioLevel, recordingUri };
 };

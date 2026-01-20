@@ -1,15 +1,65 @@
 import axios from 'axios';
-import { Platform } from 'react-native'; // ✅ Import Platform
+import { Platform } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
 
-// ⚠️ KEEP YOUR IP ADDRESS HERE
-const API_URL = "http://34.51.236.211:3000"; // <-- HARDCODE THIS
+// ⚠️ YOUR SERVER IP
+const API_URL = "http://34.51.236.211:3000"; 
 
+// 1. Create a "Smart" Client
+const api = axios.create({
+    baseURL: API_URL,
+    headers: {
+        'Content-Type': 'multipart/form-data',
+    },
+});
+
+// 2. Interceptor: Attach Token automatically
+api.interceptors.request.use(async (config) => {
+    try {
+        const token = await SecureStore.getItemAsync('user_token');
+        if (token) {
+            config.headers.Authorization = `Bearer ${token}`;
+        }
+    } catch (error) {
+        console.error("Error loading token", error);
+    }
+    return config;
+});
+
+// 3. Login Function (UPDATED)
+export const loginUser = async (username: string, password: string) => {
+    // Uses raw axios to avoid circular dependency issues during login
+    const response = await axios.post(`${API_URL}/auth/login`, { username, password });
+    if (response.data.token) {
+        await SecureStore.setItemAsync('user_token', response.data.token);
+        await SecureStore.setItemAsync('user_name', response.data.user.username);
+        
+        // ✅ NEW: Save Full Name for Dashboard Greeting
+        if (response.data.user.fullName) {
+             await SecureStore.setItemAsync('user_fullname', response.data.user.fullName);
+        }
+        
+        // Save Work Package assignment if it exists
+        if (response.data.user.assignedWP) {
+             await SecureStore.setItemAsync('user_wp', response.data.user.assignedWP); 
+        }
+    }
+    return response.data;
+};
+
+// 4. Logout Function
+export const logoutUser = async () => {
+    await SecureStore.deleteItemAsync('user_token');
+    await SecureStore.deleteItemAsync('user_name');
+    await SecureStore.deleteItemAsync('user_fullname'); // Clear full name too
+    await SecureStore.deleteItemAsync('user_wp');
+};
+
+// 5. Upload Function
 export const uploadReport = async (data: any, audioUri?: string, photoUri?: string) => {
     try {
-        console.log("📤 PREPARING UPLOAD...");
         const formData = new FormData();
         
-        // Append Text Data
         formData.append('taskStatus', data.taskStatus);
         formData.append('manualQty', data.quantity);
         formData.append('manualComments', data.comments);
@@ -17,7 +67,6 @@ export const uploadReport = async (data: any, audioUri?: string, photoUri?: stri
         formData.append('workPackage', data.workPackage);
         formData.append('user', data.user);
 
-        // Append Audio
         if (audioUri) {
             const fileType = audioUri.split('.').pop();
             formData.append('audio', {
@@ -27,25 +76,22 @@ export const uploadReport = async (data: any, audioUri?: string, photoUri?: stri
             } as any);
         }
 
-        // ✅ FIXED PHOTO LOGIC
         if (photoUri) {
-            console.log("📸 ATTACHING PHOTO:", photoUri);
             const filename = photoUri.split('/').pop();
             const match = /\.(\w+)$/.exec(filename || '');
             const type = match ? `image/${match[1]}` : `image/jpeg`;
 
             formData.append('photo', {
-                uri: photoUri, // Expo Camera URIs are usually correct now, but this keeps it safe
+                uri: photoUri, 
                 name: filename || 'evidence.jpg',
                 type: type
             } as any);
-        } else {
-            console.log("⚠️ NO PHOTO DETECTED IN STATE");
         }
 
-        const response = await axios.post(`${API_URL}/submit`, formData, {
-            headers: { 'Content-Type': 'multipart/form-data' },
-        });
+        // Use 'api' instance to ensure Token is attached
+        const response = await api.post('/submit', formData);
         return response.data;
     } catch (error) { throw error; }
 };
+
+export default api;

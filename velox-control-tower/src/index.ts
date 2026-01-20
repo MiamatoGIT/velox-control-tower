@@ -11,13 +11,17 @@ import { open } from 'sqlite';
 import { renderDashboard } from './controllers/dashboardController';
 import { submitReport } from './controllers/reportController'; 
 import { renderMissionControl } from './controllers/missionControlController'; 
+import { register, login } from './controllers/authController'; // ✅ NEW: Auth Controller
 
 // Services
-import { processPdfReport } from './services/geminiService'; // ✅ Import new service
+import { processPdfReport } from './services/geminiService';
 
 // Routes
 import reportRoutes from './routes/reportRoutes';
 import { initDB, saveConsent } from './db/database';
+
+// Middleware
+import { authenticateToken } from './middleware/authMiddleware'; // ✅ NEW: Middleware
 
 dotenv.config();
 
@@ -30,10 +34,15 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use('/files', express.static(path.join(process.cwd(), 'ACC_Sync')));
 
-// Routes
+// --- 🔐 AUTHENTICATION ROUTES ---
+const authRouter = express.Router();
+authRouter.post('/register', register);
+authRouter.post('/login', login);
+app.use('/auth', authRouter);
+
+// --- 🚦 PUBLIC ROUTES ---
 app.get('/', renderDashboard);
 app.get('/mission-control', renderMissionControl);
-app.use('/submit', reportRoutes);
 
 app.post('/api/consent', async (req, res) => {
     try {
@@ -42,7 +51,13 @@ app.post('/api/consent', async (req, res) => {
     } catch (e) { res.status(500).json({ error: "Consent failed" }); }
 });
 
-// --- 📂 SMART DROP ZONE LOGIC ---
+// --- 🛡️ PROTECTED ROUTES ---
+// We wrap reportRoutes with authenticateToken. 
+// The mobile app must now send "Authorization: Bearer <token>"
+app.use('/submit', authenticateToken, reportRoutes);
+
+
+// --- 📂 SMART DROP ZONE LOGIC (UNCHANGED) ---
 const INBOX_DIR = path.join(process.cwd(), 'ACC_Sync/Mission_Control_Inbox');
 const PROCESSED_DIR = path.join(process.cwd(), 'ACC_Sync/Mission_Control_Processed');
 
@@ -109,6 +124,7 @@ app.listen(port, async () => {
     await initDB();
     console.log(`🚀 VELOX CORE ONLINE`);
     console.log(`---------------------------------------------`);
+    console.log(`🔐 AUTH MODE:         ENABLED (JWT)`);
     console.log(`📥 DROP ZONE:         ${INBOX_DIR}`);
     console.log(`📊 FIELD DASHBOARD:   http://${PUBLIC_HOST}:${port}`);
     console.log(`🌌 MISSION CONTROL:   http://${PUBLIC_HOST}:${port}/mission-control`);
