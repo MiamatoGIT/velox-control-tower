@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "velox-field-companion",
-    "slug": "velox-field-companion",
+    "name": "Field Companion",
+    "slug": "field-companion-v2",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -16,15 +16,52 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.fieldcompanion",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.AUDIO_CAPTURE",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Field Companion to access your camera to document site conditions."
+        }
+      ],
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Allow Field Companion to access your microphone for voice reports."
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "9f6d81f9-5e5a-4f6f-85cb-b8c17eb9266d"
+      }
     }
   }
 }
