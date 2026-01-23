@@ -5,7 +5,7 @@ import { getMaterialContext } from './materialKnowledge';
 
 dotenv.config();
 
-const MODEL_NAME = "gemini-robotics-er-1.5-preview"; 
+const MODEL_NAME = "gemini-robotics-er-1.5-preview"; // Valid model name
 const API_KEY = process.env.GEMINI_API_KEY;
 
 if (!API_KEY) { console.error("❌ GEMINI_API_KEY is missing"); process.exit(1); }
@@ -14,7 +14,7 @@ const genAI = new GoogleGenerativeAI(API_KEY);
 const model = genAI.getGenerativeModel({ model: MODEL_NAME });
 
 // ============================================================
-// 1. AUDIO PROCESSOR
+// 1. AUDIO PROCESSOR (UNCHANGED)
 // ============================================================
 export const processAudioReport = async (filePath: string, mimeType: string): Promise<any> => {
     try {
@@ -23,7 +23,6 @@ export const processAudioReport = async (filePath: string, mimeType: string): Pr
         const base64Audio = fileBuffer.toString('base64');
         const materialContext = getMaterialContext();
 
-        // ✅ Use Helper Function for the "Brain"
         const prompt = getAudioPrompt(materialContext);
 
         const result = await model.generateContent([
@@ -40,7 +39,7 @@ export const processAudioReport = async (filePath: string, mimeType: string): Pr
 };
 
 // ============================================================
-// 2. PDF PROCESSOR
+// 2. PDF PROCESSOR (UPDATED)
 // ============================================================
 export const processPdfReport = async (filePath: string): Promise<any> => {
     try {
@@ -48,7 +47,7 @@ export const processPdfReport = async (filePath: string): Promise<any> => {
         const fileBuffer = fs.readFileSync(filePath);
         const base64Pdf = fileBuffer.toString('base64');
 
-        // ✅ Use Helper Function for the "Brain"
+        // ✅ Updated Prompt with HSE & Company Extraction
         const prompt = getPdfPrompt();
 
         const result = await model.generateContent([
@@ -101,27 +100,56 @@ function getAudioPrompt(context: string): string {
     `;
 }
 
+// ✅ NEW: Enhanced PDF Prompt
 function getPdfPrompt(): string {
     return `
     You are a Project Controls Manager. Extract data from this Daily Progress Report PDF.
     
-    **MAPPING INSTRUCTIONS:**
-    1. **Meta:** Project Name, Date, Prepared By.
-    2. **Strategy:** Executive Strategy focus.
-    3. **HSE:** Incidents and Inspections.
-    4. **Main Activity:** Critical activity from Execution/Commissioning.
-    5. **Procurement:** Procurement table items.
-    6. **Readiness:** Work Packages/Readiness table items.
-    7. **Commissioning:** Commissioning section (Description, Target%, Actual%, Status).
+    **CRITICAL EXTRACTION RULES:**
+
+    1. **HSE STATUS (Health, Safety, Environment):**
+       - Look for the HSE Table or Section.
+       - Extract "Working Hours" (e.g., "7 a.m. - 7 p.m." becomes "07:00 - 19:00").
+       - Extract counts for: "People on site", "Incidents", "Toolboxes" (TBT), "DRA" (Risk Assessment), "Observations".
+       - Extract "Extra Training" or "Training" text.
+       - Extract "Site Inspections" status.
+
+    2. **SUBCONTRACTORS (External Companies):**
+       - Look for tables labeled "Subcontractors", "Site Partners", or "External Companies".
+       - Extract Company Name, Work Description (Role), and Finish Date/Status.
+       - If personnel count is not explicitly listed, estimate based on context or set to 0.
+
+    3. **STANDARD SECTIONS:**
+       - Meta: Project Name, Date, Prepared By.
+       - Strategy: Executive Strategy focus points.
+       - Main Activity: The primary Execution item (Progress %).
+       - Procurement: The Procurement tracking table.
+       - Readiness: The Work Package Preparation table.
+       - Commissioning: The Commissioning status table.
 
     **OUTPUT FORMAT (JSON ONLY):**
     {
         "meta": { "project": "String", "date": "YYYY-MM-DD", "preparedBy": "String" },
         "strategy": { "focus": "String" },
-        "hse": { "incidents": "String", "inspections": "String" },
+        
+        "hse": { 
+            "workingHours": "String",
+            "peopleOnSite": Number,
+            "incidents": Number,
+            "toolboxes": Number,
+            "dra": Number,
+            "observations": Number,
+            "training": "String",
+            "inspections": "String"
+        },
+
+        "externalCompanies": [ 
+            { "name": "String", "role": "String", "personnel": Number } 
+        ],
+
         "mainActivity": { "description": "String", "targetPercent": Number, "actualPercent": Number, "status": "String" },
         "procurement": [ { "material": "String", "expectedDate": "String", "status": "String" } ],
-        "readiness": [ { "wpId": "String", "drawingsStatus": "String", "readinessStatus": "String" } ],
+        "readiness": [ { "wpId": "String", "description": "String", "drawingsStatus": "String", "readinessStatus": "String" } ],
         "commissioning": { "description": "String", "targetPercent": Number, "actualPercent": Number, "status": "String" }
     }
     `;

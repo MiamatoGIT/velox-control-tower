@@ -497,3 +497,81 @@ Public IP: 34.51.236.211 (Hardcoded in App v4.0).
 Firewall: Port 3000 is open.
 
 Protection: authMiddleware now rejects unauthorized traffic on /submit.
+
+
+# 📂 Velox Field Companion - Handover v2.0
+
+**Status:** Stable (Android APK)
+**Last Update:** January 2026
+**App Name:** Field Companion
+
+---
+
+## 1. Project Overview
+The **Field Companion** is a React Native mobile app used by site foremen to report daily progress via voice and photos. It connects to the Velox Control Tower backend.
+
+* **Frontend:** React Native (Expo SDK 54)
+* **Backend:** Node.js Express + SQLite
+* **Build Tool:** EAS (Expo Application Services)
+
+---
+
+## 2. Quick Start (Development)
+
+### Prerequisites
+* Node.js & NPM installed
+* Expo Go app on Android phone
+
+### Installation
+```bash
+npm install
+Running Locally
+To start the development server:
+
+Bash
+# Start with tunnel (required for Cloud VM connection)
+npx expo start --tunnel --clear
+3. Building the APK (For Distribution)
+We use EAS Build to generate the Android APK file.
+
+Important Build Settings:
+
+Slug: field-companion-v2 (Internal ID)
+
+Package Name: com.fieldcompanion
+
+Security: usesCleartextTraffic is ENABLED (allows HTTP connection).
+
+Build Command:
+
+Bash
+# Runs a fresh build and clears cache to ensure new Icon is used
+npx eas-cli build -p android --profile preview --clear-cache
+Wait 15-20 minutes. Download the link provided.
+
+4. Backend & Database
+The app connects to a cloud server.
+
+Server URL: http://34.51.236.211:3000
+
+Database: velox_core.db (SQLite) located in server root.
+
+Restart Command: If the app says "Network Error", restart the backend:
+
+Bash
+pm2 restart velox
+Useful SQL Commands
+To assign a Work Package (Earthing) to a user:
+
+SQL
+UPDATE users SET work_package_id = 'KSB1-CTS-B1-00-DR-E-69201' WHERE username = 'antonio_araujo';
+5. Test Accounts
+Use these credentials to test the app:
+## 5. Test Accounts
+Use these credentials to test the app:
+
+| Username | Role | Work Package | Notes |
+| :--- | :--- | :--- | :--- |
+| `admin` | Admin | General | Full access |
+| `antonioa` | Foreman | Earthing | **Primary Test User** |
+| `antonios` | Foreman | Earthing | Secondary |

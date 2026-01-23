@@ -1,5 +1,8 @@
 export const css = `
 <style>
+    /* =========================================
+       1. CORE THEME & VARIABLES (UNCHANGED)
+       ========================================= */
     :root { 
         --bg-dark: #020617; 
         --card-bg: rgba(30, 41, 59, 0.6); 
@@ -37,7 +40,9 @@ export const css = `
     .text-blue { color: var(--accent-blue); }
     .flex { display: flex; }
 
-    /* LAYOUT GRID */
+    /* =========================================
+       2. LAYOUT GRID (UNCHANGED)
+       ========================================= */
     .dashboard-container {
         display: grid;
         grid-template-columns: 320px 1fr; /* Sidebar | Main Stage */
@@ -48,7 +53,6 @@ export const css = `
 
     .header { grid-column: 1 / -1; display: flex; justify-content: space-between; border-bottom: var(--glass-border); padding-bottom: 10px; }
     
-    /* SECTIONS */
     .sidebar { display: flex; flex-direction: column; gap: 20px; overflow: hidden; }
     
     .main-stage {
@@ -70,7 +74,9 @@ export const css = `
         overflow: hidden;
     }
 
-    /* CARDS */
+    /* =========================================
+       3. CARDS & LISTS (UNCHANGED)
+       ========================================= */
     .card {
         background: var(--card-bg);
         border: var(--glass-border);
@@ -80,7 +86,7 @@ export const css = `
         position: relative;
         overflow: hidden;
         transition: all 0.2s ease;
-        cursor: pointer; /* Clickable again! */
+        cursor: pointer;
     }
     
     .card:hover { border-color: rgba(255,255,255,0.3); }
@@ -94,14 +100,12 @@ export const css = `
         text-transform: uppercase; letter-spacing: 1px;
     }
 
-    /* SCROLLABLE LISTS */
     .card-list {
         flex: 1; 
         overflow-y: auto; 
         padding: 10px;
     }
 
-    /* LIST ITEMS (Mini vs Maxi) */
     .list-item {
         background: rgba(0,0,0,0.2);
         border-left: 2px solid #334155;
@@ -112,10 +116,9 @@ export const css = `
     }
     .list-item:hover { background: rgba(255,255,255,0.05); }
 
-    /* Main Stage (Maxi) Item Styling */
     .detail-item {
         display: grid;
-        grid-template-columns: 2fr 1fr 1fr 100px; /* ID | Date | Extra | Status */
+        grid-template-columns: 2fr 1fr 1fr 100px;
         gap: 20px;
         padding: 20px;
         border-bottom: 1px solid rgba(255,255,255,0.05);
@@ -123,7 +126,9 @@ export const css = `
     }
     .detail-item:hover { background: rgba(255,255,255,0.02); }
 
-    /* ALERT BADGE */
+    /* =========================================
+       4. ALERTS & MODALS (UNCHANGED)
+       ========================================= */
     .mini-alert {
         display: inline-block;
         background: rgba(239, 68, 68, 0.2);
@@ -136,7 +141,6 @@ export const css = `
         animation: pulse-small 2s infinite;
     }
 
-    /* MODAL POPUP */
     .modal-overlay {
         position: fixed; top: 0; left: 0; width: 100%; height: 100%;
         background: rgba(0,0,0,0.85); backdrop-filter: blur(8px);
@@ -149,7 +153,52 @@ export const css = `
         animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
     }
 
-    /* CUSTOM SCROLLBARS */
+    /* =========================================
+       5. 🆕 NEW ADDITIONS: TOOLTIPS & BADGES
+       ========================================= */
+    
+    /* The container for the tooltip (the row itself) */
+    .has-tooltip {
+        position: relative;
+        cursor: help;
+    }
+    
+    /* The actual pop-up text */
+    .has-tooltip:hover::after {
+        content: attr(data-tooltip);
+        position: absolute;
+        bottom: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #0f172a;
+        border: 1px solid var(--accent-blue);
+        color: #fff;
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-size: 11px;
+        font-family: 'JetBrains Mono', monospace;
+        white-space: pre-wrap; /* Allows multi-line text */
+        z-index: 1000;
+        width: 240px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+        opacity: 0;
+        animation: fadeIn 0.2s forwards;
+        pointer-events: none; /* Let clicks pass through */
+    }
+
+    /* The 'ACKNOWLEDGED' green badge */
+    .badge-ack {
+        background: rgba(52, 211, 153, 0.1); 
+        color: var(--accent-green); 
+        border: 1px solid var(--accent-green);
+        font-size: 9px; padding: 2px 4px; border-radius: 3px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+    }
+
+    /* =========================================
+       6. ANIMATIONS & SCROLLBARS (UNCHANGED)
+       ========================================= */
     ::-webkit-scrollbar { width: 6px; }
     ::-webkit-scrollbar-track { background: rgba(255,255,255,0.02); }
     ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
@@ -157,5 +206,18 @@ export const css = `
 
     @keyframes pulse-small { 0% { opacity: 0.7; } 50% { opacity: 1; } 100% { opacity: 0.7; } }
     @keyframes shake { 10%, 90% { transform: translate3d(-1px, 0, 0); } 20%, 80% { transform: translate3d(2px, 0, 0); } 30%, 50%, 70% { transform: translate3d(-4px, 0, 0); } 40%, 60% { transform: translate3d(4px, 0, 0); } }
+    @keyframes fadeIn { to { opacity: 1; } }
+    
+    /* 1. Lift the CONTAINER when hovered */
+    .has-tooltip:hover {
+        z-index: 1000;
+        position: relative; /* Essential for z-index to work */
+    }
+
+    /* 2. Lift the TOOLTIP box even higher */
+    .has-tooltip:hover::after {
+        z-index: 2000;
+    }
+
 </style>
 `;

@@ -2,6 +2,7 @@ import { css } from './styles';
 import { js } from './scripts';
 
 export const renderLayout = (data: any) => {
+    // Safety checks
     const safeData = {
         ...data,
         procurement: data.procurement || [],
@@ -34,15 +35,19 @@ export const renderLayout = (data: any) => {
             </div>
 
             <div class="sidebar">
-                
-                <div class="card" id="card-STRATEGY" onclick="selectSection('STRATEGY')" style="border-left: 3px solid var(--accent-blue); flex: 1; cursor: pointer;">
+                <div class="card" id="card-STRATEGY" onclick="selectSection('STRATEGY')" style="border-left: 3px solid var(--accent-blue); flex: 2; cursor: pointer;">
                     <div class="card-header">💡 STRATEGY</div>
                     <div id="strategy-content" class="card-list"></div>
                 </div>
                 
-                <div class="card" id="card-HSE" onclick="selectSection('HSE')" style="border-left: 3px solid var(--accent-green); height: 180px; flex: none; cursor: pointer;">
-                    <div class="card-header">🛡️ HSE STATUS</div>
+                <div class="card" id="card-HSE" onclick="selectSection('HSE')" style="border-left: 3px solid var(--accent-green); flex: 1; cursor: pointer;">
+                    <div class="card-header">🛡️ HSE DASHBOARD</div>
                     <div id="hse-content" class="card-list"></div>
+                </div>
+
+                <div class="card" id="card-COMPANIES" onclick="selectSection('COMPANIES')" style="border-left: 3px solid var(--accent-amber); flex: 1; cursor: pointer;">
+                    <div class="card-header">🏗️ SITE PARTNERS</div>
+                    <div id="companies-content" class="card-list"></div>
                 </div>
             </div>
 

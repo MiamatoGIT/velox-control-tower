@@ -6,22 +6,27 @@ import fs from 'fs';
 import chokidar from 'chokidar';
 import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
+import cookieParser from 'cookie-parser'; // 👈 NEW IMPORT
 
 // Controllers
 import { renderDashboard } from './controllers/dashboardController';
 import { submitReport } from './controllers/reportController'; 
-import { renderMissionControl } from './controllers/missionControlController'; 
-import { register, login } from './controllers/authController'; // ✅ NEW: Auth Controller
+import { renderMissionControl, acknowledgeBlocker, getLiveStats } from './controllers/missionControlController'; 
+import { register, login, webLogin } from './controllers/authController'; // 👈 Added webLogin
 
 // Services
 import { processPdfReport } from './services/geminiService';
 
-// Routes
+// Routes & DB
 import reportRoutes from './routes/reportRoutes';
 import { initDB, saveConsent } from './db/database';
 
+// Views
+import { renderLogin } from './views/missionControl/login'; // 👈 New View
+
 // Middleware
-import { authenticateToken } from './middleware/authMiddleware'; // ✅ NEW: Middleware
+import { authenticateToken } from './middleware/authMiddleware'; 
+import { webAuthMiddleware } from './middleware/webAuthMiddleware'; // 👈 New Middleware
 
 dotenv.config();
 
@@ -32,18 +37,34 @@ const PUBLIC_HOST = "34.51.236.211";
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser()); // 👈 ACTIVATE COOKIE PARSER
 app.use('/files', express.static(path.join(process.cwd(), 'ACC_Sync')));
 
 // --- 🔐 AUTHENTICATION ROUTES ---
 const authRouter = express.Router();
 authRouter.post('/register', register);
-authRouter.post('/login', login);
+authRouter.post('/login', login);         // Mobile App (JSON)
+authRouter.post('/web-login', webLogin);  // Web Dashboard (Cookie) 👈
 app.use('/auth', authRouter);
 
-// --- 🚦 PUBLIC ROUTES ---
-app.get('/', renderDashboard);
-app.get('/mission-control', renderMissionControl);
+// --- 🚦 ROUTES ---
 
+// 1. Login Page (Public)
+app.get('/login', (req, res) => res.send(renderLogin())); // 👈
+
+// 2. Mission Control (PROTECTED)
+// Now protected by webAuthMiddleware
+app.get('/mission-control', webAuthMiddleware, renderMissionControl); // 👈 Protected
+
+// 3. Mission Control APIs (PROTECTED)
+// These are called by the scripts.ts on the dashboard
+app.get('/api/live', webAuthMiddleware, getLiveStats); 
+app.post('/api/ack', webAuthMiddleware, acknowledgeBlocker);
+
+// 4. Legacy Dashboard (Public or Protected? Your choice. Leaving Public for now)
+app.get('/', renderDashboard);
+
+// 5. Mobile App Consent
 app.post('/api/consent', async (req, res) => {
     try {
         await saveConsent(req.body);
@@ -51,9 +72,7 @@ app.post('/api/consent', async (req, res) => {
     } catch (e) { res.status(500).json({ error: "Consent failed" }); }
 });
 
-// --- 🛡️ PROTECTED ROUTES ---
-// We wrap reportRoutes with authenticateToken. 
-// The mobile app must now send "Authorization: Bearer <token>"
+// --- 🛡️ MOBILE REPORTING ROUTES ---
 app.use('/submit', authenticateToken, reportRoutes);
 
 
@@ -70,12 +89,10 @@ const processInboxFile = async (filePath: string) => {
 
         let data = null;
 
-        // --- STRATEGY A: It's a JSON file (Direct Upload) ---
         if (ext === '.json') {
             const rawData = fs.readFileSync(filePath, 'utf-8');
             if (rawData) data = JSON.parse(rawData);
         }
-        // --- STRATEGY B: It's a PDF (AI Extraction) ---
         else if (ext === '.pdf') {
             console.log("🤖 Asking Gemini to read the PDF...");
             data = await processPdfReport(filePath);
@@ -85,7 +102,6 @@ const processInboxFile = async (filePath: string) => {
             return;
         }
 
-        // --- SAVE TO DATABASE ---
         if (data && data.meta && data.mainActivity) {
             const db = await open({
                 filename: path.join(process.cwd(), 'velox_core.db'),
@@ -99,7 +115,6 @@ const processInboxFile = async (filePath: string) => {
 
             console.log("✅ Mission Control Updated Successfully!");
             
-            // Move to Processed
             const newPath = path.join(PROCESSED_DIR, `${Date.now()}_${path.basename(filePath)}`);
             fs.renameSync(filePath, newPath);
             console.log(`📦 Archived to Processed folder.`);
@@ -124,7 +139,7 @@ app.listen(port, async () => {
     await initDB();
     console.log(`🚀 VELOX CORE ONLINE`);
     console.log(`---------------------------------------------`);
-    console.log(`🔐 AUTH MODE:         ENABLED (JWT)`);
+    console.log(`🔐 AUTH MODE:         ENABLED (JWT + Cookies)`);
     console.log(`📥 DROP ZONE:         ${INBOX_DIR}`);
     console.log(`📊 FIELD DASHBOARD:   http://${PUBLIC_HOST}:${port}`);
     console.log(`🌌 MISSION CONTROL:   http://${PUBLIC_HOST}:${port}/mission-control`);
