@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+dist/
+build/
+
+# Environment & Secrets
+.env
+.DS_Store
+
+# Database (Don't commit the live DB)
+*.db
+*.sqlite
+velox_core.db
+
+# Storage Folders (Don't commit uploaded user files)
+ACC_Sync/
+temp_uploads/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
