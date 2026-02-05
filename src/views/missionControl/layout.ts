@@ -2,7 +2,6 @@ import { css } from './styles';
 import { js } from './scripts';
 
 export const renderLayout = (data: any) => {
-    // Safety checks to prevent crashes if data is missing
     const safeData = {
         ...data,
         procurement: data.procurement || [],
@@ -23,53 +22,69 @@ export const renderLayout = (data: any) => {
 
         <div class="dashboard-container">
             
-            <div class="header">
+            <div class="header glass-panel">
                 <div class="flex flex-col">
                      <h1><span class="text-blue">VELOX</span> STARGATE</h1>
-                     <span class="mono" style="font-size: 10px; color: #64748b;">DIGITAL TWIN OPERATION | LIVE FEED</span>
+                     <span class="mono" style="font-size: 10px; color: #64748b; letter-spacing: 2px;">DIGITAL TWIN OPERATION</span>
                 </div>
                 <div class="mono" style="text-align: right; font-size: 12px;">
-                    <div>PROJECT: <span style="background:rgba(56, 189, 248, 0.1); color:#38bdf8; padding:2px 6px; border-radius:4px;">${safeData.meta.project}</span></div>
-                    <div style="margin-top:5px; color:#94a3b8;">${safeData.meta.date}</div>
+                    <div>PROJECT <span style="color:#38bdf8;">${safeData.meta.project}</span></div>
+                    <div style="color:#94a3b8;">${safeData.meta.date}</div>
                 </div>
             </div>
 
-            <div class="sidebar">
-                <div class="card" id="card-STRATEGY" onclick="selectSection('STRATEGY')" style="border-left: 3px solid var(--accent-blue); flex: 2; cursor: pointer;">
+            <div style="grid-column: 1; grid-row: 2; display:flex; flex-direction:column; gap:16px;">
+                <div class="card" id="card-STRATEGY" onclick="selectSection('STRATEGY')" style="flex: 1; cursor: pointer;">
                     <div class="card-header">💡 STRATEGY</div>
                     <div id="strategy-content" class="card-list"></div>
                 </div>
                 
-                <div class="card" id="card-HSE" onclick="selectSection('HSE')" style="border-left: 3px solid var(--accent-green); flex: 1; cursor: pointer;">
-                    <div class="card-header">🛡️ HSE DASHBOARD</div>
+                <div class="card" id="card-HSE" onclick="selectSection('HSE')" style="height: 200px; cursor: pointer;">
+                    <div class="card-header">🛡️ HSE STATUS</div>
                     <div id="hse-content" class="card-list"></div>
                 </div>
 
-                <div class="card" id="card-COMPANIES" onclick="selectSection('COMPANIES')" style="border-left: 3px solid var(--accent-amber); flex: 1; cursor: pointer;">
-                    <div class="card-header">🏗️ SITE PARTNERS</div>
+                <div class="card" id="card-COMPANIES" onclick="selectSection('COMPANIES')" style="height: 150px; cursor: pointer;">
+                    <div class="card-header">🏗️ PARTNERS</div>
                     <div id="companies-content" class="card-list"></div>
                 </div>
             </div>
 
-            <div class="main-stage">
-                <div id="main-stage-title" class="card-header" style="background:transparent; border-bottom:1px solid rgba(56, 189, 248, 0.3); color:#38bdf8; padding-left:0;">WAITING FOR INPUT...</div>
-                <div id="main-stage-content" class="card-list" style="padding:0; margin-top:20px;"></div>
+            <div class="card" style="grid-column: 2; grid-row: 2;">
+                <div id="main-stage-title" class="card-header" style="background:transparent; color:#fff; font-size:14px;">SYSTEM STANDBY</div>
+                <div id="main-stage-content" class="card-list" style="padding:20px;"></div>
             </div>
 
-            <div class="bottom-dock">
-                <div class="card" id="card-READINESS" onclick="selectSection('READINESS')" style="border-top: 3px solid var(--accent-red);">
+            <div class="index-tabs-container">
+                
+                <div class="glass-tab tab-budget" onclick="toggleDrawer('budget')" title="Open Master Budget">
+                    BUDGET
+                </div>
+                
+                <div class="glass-tab tab-scope" onclick="toggleDrawer('wp')" title="Open Work Packages">
+                    SCOPE
+                </div>
+
+                <div class="glass-tab tab-system" onclick="alert('System Diagnostics: OK')" title="System Status">
+                    SYSTEM
+                </div>
+
+            </div>
+
+            <div class="bottom-dock" style="grid-column: 1 / -1; grid-row: 3; display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px;">
+                <div class="card" id="card-READINESS" onclick="selectSection('READINESS')" style="border-top: 3px solid var(--neon-red);">
                     <div class="card-header">1. READINESS (${safeData.readiness.length})</div>
                     <div id="list-READINESS" class="card-list"></div>
                 </div>
-                <div class="card" id="card-PROCUREMENT" onclick="selectSection('PROCUREMENT')" style="border-top: 3px solid var(--accent-green);">
+                <div class="card" id="card-PROCUREMENT" onclick="selectSection('PROCUREMENT')" style="border-top: 3px solid var(--neon-green);">
                     <div class="card-header">2. PROCUREMENT (${safeData.procurement.length})</div>
                     <div id="list-PROCUREMENT" class="card-list"></div>
                 </div>
-                <div class="card" id="card-EXECUTION" onclick="selectSection('EXECUTION')" style="border-top: 3px solid var(--accent-blue);">
+                <div class="card" id="card-EXECUTION" onclick="selectSection('EXECUTION')" style="border-top: 3px solid var(--neon-blue);">
                     <div class="card-header">3. EXECUTION</div>
                     <div id="list-EXECUTION" class="card-list"></div>
                 </div>
-                <div class="card" id="card-COMMISSIONING" onclick="selectSection('COMMISSIONING')" style="border-top: 3px solid var(--accent-amber);">
+                <div class="card" id="card-COMMISSIONING" onclick="selectSection('COMMISSIONING')" style="border-top: 3px solid var(--neon-amber);">
                     <div class="card-header">4. COMMISSIONING</div>
                     <div id="list-COMMISSIONING" class="card-list"></div>
                 </div>
@@ -78,47 +93,35 @@ export const renderLayout = (data: any) => {
         </div>
 
         <div id="drawer-budget" class="drawer">
-            <div class="drawer-handle" style="top: 20%; background: #34d399;" onclick="toggleDrawer('budget')">
-                BUDGET
-            </div>
             <div class="drawer-content">
-                <h2 style="color:#34d399; margin-bottom:20px;">💰 MASTER BUDGET CONSUMPTION</h2>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                    <h2 style="color:var(--neon-green); margin:0;">💰 BUDGET</h2>
+                    <button onclick="toggleDrawer('budget')" style="background:none; border:none; color:#fff; font-size:20px; cursor:pointer;">✕</button>
+                </div>
                 
                 <div style="display:flex; gap:10px; margin-bottom:30px;">
-                    <div style="flex:1; background:rgba(52, 211, 153, 0.1); padding:15px; border-radius:8px;">
-                        <div class="mono small" style="color:#34d399;">TOTAL BUDGET</div>
+                    <div style="flex:1; background:rgba(52, 211, 153, 0.1); padding:15px; border-radius:8px; border:1px solid rgba(52, 211, 153, 0.2);">
+                        <div class="mono small" style="color:var(--neon-green);">TOTAL</div>
                         <div style="font-size:20px; font-weight:bold; color:#fff;">NOK 234M</div>
                     </div>
-                    <div style="flex:1; background:rgba(239, 68, 68, 0.1); padding:15px; border-radius:8px;">
-                        <div class="mono small" style="color:#ef4444;">SPENT (EST)</div>
+                    <div style="flex:1; background:rgba(239, 68, 68, 0.1); padding:15px; border-radius:8px; border:1px solid rgba(239, 68, 68, 0.2);">
+                        <div class="mono small" style="color:var(--neon-red);">SPENT</div>
                         <div style="font-size:20px; font-weight:bold; color:#fff;">NOK 42M</div>
                     </div>
                 </div>
 
-                <div id="budget-list-container">
-                    <div class="budget-row">
-                        <div style="flex:1;">
-                            <div style="color:#fff;">EPOD LV IT 1</div>
-                            <div class="mono small" style="color:#94a3b8;">PRO-2140</div>
-                        </div>
-                        <div style="text-align:right;">
-                            <div class="text-green">15% Used</div>
-                            <div class="mono small">NOK 1.4M / 9.2M</div>
-                        </div>
-                    </div>
-                    <div class="budget-bar"><div class="budget-fill" style="width: 15%;"></div></div>
-                </div>
+                <div id="budget-list-container"></div>
             </div>
         </div>
 
-        <div id="drawer-wp" class="drawer" style="border-left-color: #f59e0b;">
-            <div class="drawer-handle" style="top: 35%; background: #f59e0b;" onclick="toggleDrawer('wp')">
-                WP SCOPE
-            </div>
+        <div id="drawer-wp" class="drawer">
             <div class="drawer-content">
-                <h2 style="color:#f59e0b; margin-bottom:20px;">📂 ACTIVE WORK PACKAGES</h2>
+                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                    <h2 style="color:var(--neon-amber); margin:0;">📂 WORK PACKAGES</h2>
+                    <button onclick="toggleDrawer('wp')" style="background:none; border:none; color:#fff; font-size:20px; cursor:pointer;">✕</button>
+                </div>
                 <div id="wp-list-container">
-                    <div class="mono" style="opacity:0.5;">No WPs loaded. Upload Zip to ingest.</div>
+                    <div class="mono" style="opacity:0.5;">No WPs loaded.</div>
                 </div>
             </div>
         </div>
@@ -127,11 +130,7 @@ export const renderLayout = (data: any) => {
             function toggleDrawer(id) {
                 const el = document.getElementById('drawer-' + id);
                 const isOpen = el.classList.contains('open');
-                
-                // Close all first
                 document.querySelectorAll('.drawer').forEach(d => d.classList.remove('open'));
-                
-                // Toggle requested one
                 if (!isOpen) el.classList.add('open');
             }
         </script>

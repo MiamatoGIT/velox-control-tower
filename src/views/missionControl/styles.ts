@@ -1,190 +1,186 @@
-// 1. THEME & UTILS (The "Look")
-const themeCSS = `
-    :root { 
-        --bg-dark: #020617; 
-        --card-bg: rgba(30, 41, 59, 0.6); 
-        --glass-panel: rgba(15, 23, 42, 0.85);
-        --glass-border: 1px solid rgba(56, 189, 248, 0.2);
-        
-        /* NEON PALETTE */
-        --neon-blue: #38bdf8; 
-        --neon-green: #34d399; 
-        --neon-amber: #f59e0b;
-        --neon-red: #ef4444; 
-    }
-    
-    * { box-sizing: border-box; }
-    body { 
-        background-color: var(--bg-dark); 
-        color: #f8fafc; 
-        font-family: 'Inter', sans-serif; 
-        margin: 0; padding: 0;
-        height: 100vh; width: 100vw;
-        overflow: hidden; 
-        display: flex; flex-direction: column;
-    }
-    
-    /* SCIFI GRID BACKGROUND */
-    body::before {
-        content: ""; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-        background-image: linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-        background-size: 40px 40px; z-index: -1;
-    }
-    
-    ::-webkit-scrollbar { width: 4px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
-
-    .mono { font-family: 'JetBrains Mono', monospace; }
-    .text-blue { color: var(--neon-blue); text-shadow: 0 0 10px rgba(56, 189, 248, 0.5); }
-    .flex { display: flex; }
-    .justify-between { justify-content: space-between; }
-    .small { font-size: 10px; opacity: 0.8; }
-`;
-
-// 2. LAYOUT GRID (The "Structure")
+// --- MODULE 1: CORE LAYOUT & VARIABLES ---
 const layoutCSS = `
+    :root {
+        /* 💎 RICH GLASS THEME */
+        --glass-bg: rgba(10, 15, 30, 0.40); 
+        --glass-border: rgba(255, 255, 255, 0.08);
+        --glass-shine: linear-gradient(145deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0) 100%);
+        --neon-blue: #38bdf8;
+        --neon-green: #34d399;
+        --neon-amber: #f59e0b;
+        --neon-red: #ef4444;
+        --blur-amt: 16px; 
+    }
+
+    body { 
+        background-color: #020617;
+        background-image: 
+            radial-gradient(circle at 15% 50%, rgba(56, 189, 248, 0.12) 0%, transparent 25%),
+            radial-gradient(circle at 85% 30%, rgba(245, 158, 11, 0.08) 0%, transparent 25%),
+            linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+        background-size: 100% 100%, 100% 100%, 40px 40px, 40px 40px;
+        color: #e2e8f0; 
+        font-family: 'Inter', sans-serif; 
+        margin: 0; 
+        height: 100vh; 
+        overflow: hidden;
+    }
+
+    /* MAIN GRID */
     .dashboard-container {
         display: grid;
-        grid-template-columns: 320px 1fr;
-        grid-template-rows: auto 1fr 240px;
-        gap: 20px; padding: 20px;
-        height: 100%; width: 100%;
+        grid-template-columns: 320px 1fr; 
+        grid-template-rows: 60px 1fr 280px;
+        gap: 20px; 
+        padding: 20px;
+        padding-right: 70px; /* Space for Tabs */
+        height: 100vh;
+        box-sizing: border-box;
     }
-    .header { grid-column: 1 / -1; display: flex; justify-content: space-between; border-bottom: var(--glass-border); padding-bottom: 10px; }
-    .sidebar { display: flex; flex-direction: column; gap: 20px; overflow: hidden; }
-    .bottom-dock { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; height: 100%; overflow: hidden; }
-    
-    .main-stage {
-        background: radial-gradient(circle at center, rgba(56, 189, 248, 0.05), transparent 70%);
-        border: var(--glass-border);
-        box-shadow: inset 0 0 50px rgba(0,0,0,0.5);
+
+    /* HEADER */
+    .header { 
+        grid-column: 1 / -1; 
+        display: flex; justify-content: space-between; align-items: center; 
+        padding: 0 15px;
+        background: rgba(10, 15, 30, 0.3);
+        backdrop-filter: blur(10px);
+        border-bottom: 1px solid var(--glass-border);
         border-radius: 12px;
-        position: relative; overflow: hidden;
-        display: flex; flex-direction: column; padding: 20px;
     }
+
+    h1 { font-family: 'JetBrains Mono', monospace; font-size: 24px; letter-spacing: -1px; margin: 0; text-shadow: 0 0 15px rgba(56, 189, 248, 0.6); }
+    .text-blue { color: var(--neon-blue); }
+    
+    /* UTILS */
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    .small { font-size: 11px; }
+    .flex { display: flex; }
+    .flex-col { flex-direction: column; }
 `;
 
-// 3. COMPONENTS (Cards, Lists, Badges, TOOLTIPS)
+// --- MODULE 2: UI COMPONENTS (Cards, Lists, Tabs) ---
 const componentsCSS = `
-    /* GLASS CARDS */
+    /* GLASS CARD */
     .card {
-        background: var(--card-bg);
-        backdrop-filter: blur(10px);
-        border: var(--glass-border);
-        border-radius: 8px;
-        display: flex; flex-direction: column;
-        height: 100%; position: relative; overflow: hidden; 
-        transition: all 0.2s ease; cursor: pointer;
+        background: var(--glass-bg);
+        background-image: var(--glass-shine);
+        backdrop-filter: blur(var(--blur-amt));
+        -webkit-backdrop-filter: blur(var(--blur-amt));
+        border: 1px solid var(--glass-border);
+        box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3), inset 0 0 0 1px rgba(255,255,255,0.03);
+        border-radius: 16px;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        position: relative;
+        /* CRITICAL FIX: Ensures flex children (content) expand */
+        min-height: 0; 
+        height: 100%;
     }
-    .card:hover { border-color: rgba(255,255,255,0.4); box-shadow: 0 0 15px rgba(56, 189, 248, 0.2); }
-    .card.active { border-color: var(--neon-green); box-shadow: 0 0 20px rgba(52, 211, 153, 0.3); }
-
-    .card-header { padding: 10px 15px; background: rgba(0,0,0,0.3); border-bottom: var(--glass-border); font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; }
-    .card-list { flex: 1; overflow-y: auto; padding: 10px; }
-
-    /* 🎨 COLOR CODED BOXES (ID TARGETING) */
-    #card-READINESS { border-top: 2px solid var(--neon-red); }
-    #card-READINESS .card-header { color: var(--neon-red); }
     
-    #card-PROCUREMENT { border-top: 2px solid var(--neon-green); }
-    #card-PROCUREMENT .card-header { color: var(--neon-green); }
+    .card:hover {
+        border-color: rgba(255,255,255,0.2);
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5), inset 0 0 20px rgba(255,255,255,0.02);
+        transform: translateY(-2px);
+    }
     
-    #card-EXECUTION { border-top: 2px solid var(--neon-blue); }
-    #card-EXECUTION .card-header { color: var(--neon-blue); }
+    .card.active {
+        border-color: var(--neon-blue);
+        box-shadow: 0 0 30px rgba(56, 189, 248, 0.15), inset 0 0 20px rgba(56, 189, 248, 0.05);
+    }
+
+    /* CARD HEADER & LISTS */
+    .card-header { 
+        padding: 15px 20px; font-family: 'JetBrains Mono'; font-size: 11px; 
+        color: var(--neon-blue); letter-spacing: 1px; text-transform: uppercase;
+        background: linear-gradient(90deg, rgba(56, 189, 248, 0.05), transparent);
+        border-bottom: 1px solid rgba(255,255,255,0.05);
+        flex-shrink: 0; /* Header never shrinks */
+    }
     
-    #card-COMMISSIONING { border-top: 2px solid var(--neon-amber); }
-    #card-COMMISSIONING .card-header { color: var(--neon-amber); }
+    .card-list { 
+        overflow-y: auto; 
+        flex: 1; /* Takes all remaining space */
+        padding: 15px; 
+        /* Removed height:100% to let flex handle it */
+    }
 
-    #card-HSE { border-left: 2px solid var(--neon-green); }
-    #card-COMPANIES { border-left: 2px solid var(--neon-amber); }
-
-    /* LIST ITEMS - RESTORED STYLE */
-    .list-item { 
-        background: rgba(0, 0, 0, 0.3); /* Darker background for contrast */
-        border-left: 3px solid #334155; /* Thicker border */
-        padding: 12px;                  /* More breathing room */
-        margin-bottom: 8px; 
-        font-size: 11px; 
-        transition: background 0.2s, transform 0.1s;
-        border-radius: 0 4px 4px 0;    /* Soft corners on right */
+    .list-item {
+        background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.03);
+        border-left: 3px solid transparent; padding: 12px 15px; margin-bottom: 8px;
+        border-radius: 6px; transition: all 0.2s;
     }
     .list-item:hover { 
-        background: rgba(255,255,255,0.08); 
-        transform: translateX(2px);    /* Interactive feel */
+        background: rgba(255,255,255,0.06); transform: translateX(4px); 
+        border-color: rgba(255,255,255,0.1);
     }
 
-    .detail-item { display: grid; grid-template-columns: 2fr 1fr 1fr 100px; gap: 20px; padding: 20px; border-bottom: 1px solid rgba(255,255,255,0.05); align-items: center; }
+    /* SCROLLBAR */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.3); }
 
-    /* TOOLTIPS & BADGES */
-    .badge-ack { background: rgba(52, 211, 153, 0.1); color: var(--neon-green); border: 1px solid var(--neon-green); font-size: 9px; padding: 2px 4px; border-radius: 3px; font-weight:700;}
-    .mini-alert { background: rgba(239, 68, 68, 0.2); border: 1px solid var(--neon-red); color: var(--neon-red); font-size: 9px; padding: 2px 6px; border-radius: 4px; margin-left: 8px; animation: pulse 2s infinite; }
-    
-    .has-tooltip { position: relative; cursor: help; }
-    .has-tooltip:hover::after {
-        content: attr(data-tooltip);
-        position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
-        background: #0f172a; border: 1px solid var(--neon-blue);
-        color: #fff; padding: 8px 12px; border-radius: 6px;
-        font-size: 11px; font-family: 'JetBrains Mono', monospace; white-space: pre-wrap;
-        z-index: 2000; width: 240px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5); pointer-events: none;
+    /* POST-IT TABS */
+    .index-tabs-container {
+        position: fixed; right: 0; top: 50%; transform: translateY(-50%);
+        display: flex; flex-direction: column; gap: 15px; z-index: 300; perspective: 1000px;
     }
 
-    .modal-overlay { position: fixed; inset:0; background: rgba(0,0,0,0.85); z-index: 9999; display: none; justify-content: center; align-items: center; }
-    .modal-box { background: #0f172a; border: 2px solid var(--neon-red); padding: 40px; border-radius: 16px; text-align: center; max-width: 500px; }
-    @keyframes pulse { 0% { opacity: 0.7; } 50% { opacity: 1; } 100% { opacity: 0.7; } }
-`;
-
-// 4. DRAWERS (The Sci-Fi HUD Logic)
-const drawersCSS = `
-    .drawer {
-        position: fixed; top: 0; right: -650px;
-        width: 650px; height: 100vh;
-        background: var(--glass-panel);
-        backdrop-filter: blur(25px);
-        border-left: 1px solid var(--neon-blue);
-        box-shadow: -10px 0 100px rgba(0,0,0,0.9);
-        transition: right 0.4s cubic-bezier(0.19, 1, 0.22, 1);
-        z-index: 9999; display: flex; flex-direction: column;
-    }
-    .drawer.open { right: 0; }
-    
-    .drawer::before {
-        content: " "; position: absolute; inset: 0;
-        background: repeating-linear-gradient(0deg, transparent, transparent 19px, rgba(56, 189, 248, 0.05) 20px);
-        pointer-events: none; z-index: -1;
-    }
-
-    .drawer-handle {
-        position: absolute; left: -40px; top: 20%;
-        width: 40px; height: 120px;
-        border-radius: 8px 0 0 8px;
+    .glass-tab {
+        width: 40px; height: 140px;
+        background: rgba(255, 255, 255, 0.03);
+        backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255,255,255,0.1); border-right: none; border-radius: 12px 0 0 12px;
         display: flex; align-items: center; justify-content: center;
-        cursor: pointer;
+        cursor: pointer; transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        box-shadow: -5px 5px 15px rgba(0,0,0,0.3);
         writing-mode: vertical-rl; text-orientation: mixed;
-        font-family: 'JetBrains Mono', monospace; font-weight: bold; font-size: 12px; letter-spacing: 2px;
-        color: #000; box-shadow: -5px 0 15px rgba(0,0,0,0.5);
-        transition: transform 0.2s;
+        font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 11px; 
+        letter-spacing: 2px; color: rgba(255,255,255,0.6);
     }
-    .drawer-handle:hover { transform: translateX(-5px); }
 
-    .drawer-content { padding: 40px; height: 100%; overflow-y: auto; }
-    .budget-row { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 15px; margin-bottom: 12px; border-radius: 6px; }
-
-    /* STACKED BARS */
-    .progress-track { width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; display: flex; overflow: hidden; margin-top: 10px; }
-    .prog-bar { height: 100%; transition: width 0.6s ease-in-out; }
-    .bar-installed { background: var(--neon-green); box-shadow: 0 0 10px var(--neon-green); }
-    .bar-stock { background: var(--neon-amber); box-shadow: 0 0 10px var(--neon-amber); }
-    .bar-budgeted { background: rgba(255,255,255,0.2); }
+    .glass-tab:hover {
+        transform: translateX(-10px); width: 50px; color: #fff;
+        background: rgba(255, 255, 255, 0.08); box-shadow: -8px 8px 25px rgba(0,0,0,0.5);
+    }
+    
+    .tab-budget { border-left: 3px solid var(--neon-green); text-shadow: 0 0 10px rgba(52, 211, 153, 0.4); }
+    .tab-scope { border-left: 3px solid var(--neon-amber); text-shadow: 0 0 10px rgba(245, 158, 11, 0.4); }
+    .tab-system { border-left: 3px solid var(--neon-blue); height: 100px; text-shadow: 0 0 10px rgba(56, 189, 248, 0.4); }
 `;
 
+// --- MODULE 3: MODALS & DRAWERS ---
+const modalCSS = `
+    /* POPUP MODAL OVERLAY */
+    .modal-overlay {
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(8px);
+        z-index: 1000; display: none; align-items: center; justify-content: center;
+    }
+    .modal-overlay.active { display: flex; animation: fadeIn 0.3s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+    /* DRAWER */
+    .drawer {
+        position: fixed; top: 20px; right: -600px; width: 550px; bottom: 20px;
+        background: rgba(5, 8, 15, 0.85); backdrop-filter: blur(30px);
+        border-left: 1px solid rgba(255,255,255,0.1); border-radius: 24px 0 0 24px;
+        box-shadow: -30px 0 80px rgba(0,0,0,0.8); transition: right 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+        z-index: 200; display: flex; flex-direction: column;
+    }
+    .drawer.open { right: 0; border-left: 1px solid var(--neon-blue); }
+    .drawer-content { padding: 40px; overflow-y: auto; height: 100%; }
+`;
+
+// --- EXPORT COMBINED CSS ---
 export const css = `
 <style>
-    ${themeCSS}
     ${layoutCSS}
     ${componentsCSS}
-    ${drawersCSS}
+    ${modalCSS}
 </style>
 `;

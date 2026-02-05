@@ -1,22 +1,21 @@
+// src/views/missionControl/modules/core.ts
 export const coreJS = `
-    /** CONFIG & STATE */
+    /** CORE STATE - v6.1 ALERTS SYNC */
     const CONFIG = {
-        POLL_INTERVAL: 120000, 
-        COLORS: {
-            EXECUTION: '#38bdf8', READINESS: '#ef4444', PROCUREMENT: '#34d399', DEFAULT: '#334155', TEXT_SUB: '#94a3b8'
-        }
+        POLL_INTERVAL: 5000, 
+        COLORS: { EXECUTION: '#38bdf8', READINESS: '#ef4444', PROCUREMENT: '#34d399' }
     };
 
     const STATE = {
-        data: window.DASHBOARD_DATA || {},
-        activeSection: 'STRATEGY'
+        // We now initialize 'alerts' because that is what the API sends
+        data: window.DASHBOARD_DATA || { execution: [], procurement: [], alerts: [] },
+        
+        activeSection: 'STRATEGY',
+        lastAckId: 0, 
+        
+        // Keep this for backward compatibility, but we will rely on 'alerts'
+        liveLogs: []          
     };
 
-    /** UTILS */
-    const formatMoney = (val) => {
-        if (!val) return 'NOK 0';
-        if (val >= 1000000) return \`NOK \${(val/1000000).toFixed(1)}M\`;
-        if (val >= 1000) return \`NOK \${(val/1000).toFixed(0)}k\`;
-        return \`NOK \${val.toFixed(0)}\`;
-    };
+    window.STATE = STATE;
 `;
