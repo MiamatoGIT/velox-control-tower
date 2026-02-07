@@ -147,10 +147,12 @@ const componentsCSS = `
         transform: translateX(-10px); width: 50px; color: #fff;
         background: rgba(255, 255, 255, 0.08); box-shadow: -8px 8px 25px rgba(0,0,0,0.5);
     }
-    
+
+    .tab-roadblocks { border-left: 3px solid var(--neon-red); text-shadow: 0 0 10px rgba(239, 68, 68, 0.4); }
     .tab-budget { border-left: 3px solid var(--neon-green); text-shadow: 0 0 10px rgba(52, 211, 153, 0.4); }
-    .tab-scope { border-left: 3px solid var(--neon-amber); text-shadow: 0 0 10px rgba(245, 158, 11, 0.4); }
+    .tab-scope { border-left: 3px solid var(--neon-amber); text-shadow: 0 0 10px rgba(245, 158, 11, 0.4); }.tab-roadblocks { border-left: 3px solid var(--neon-red); text-shadow: 0 0 10px rgba(239, 68, 68, 0.4); }
     .tab-system { border-left: 3px solid var(--neon-blue); height: 100px; text-shadow: 0 0 10px rgba(56, 189, 248, 0.4); }
+    
 `;
 
 // --- MODULE 3: MODALS & DRAWERS ---

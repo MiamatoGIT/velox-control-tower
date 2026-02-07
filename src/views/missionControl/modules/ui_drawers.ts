@@ -1,188 +1,222 @@
 export const uiDrawersJS = `
-    // 1. SHARED HOLOGRAM STYLES (The Scalable Part)
-    // Applies to ALL drawers (Budget, WP, etc.) automatically.
+    /**
+     * UI MODULE: DRAWERS & SLIDE-OVERS v7.9
+     * Fixes: Visible Handle (Post-it), Fallback for missing data
+     */
+
     const holoStyles = \`
-        /* Target BOTH drawers with the same holographic look */
+        /* Target ALL drawers */
         #drawer-budget.drawer.open, 
-        #drawer-wp.drawer.open {
+        #drawer-wp.drawer.open,
+        #drawer-roadblocks.drawer.open {
             top: 20px !important;
             height: calc(100vh - 40px) !important;
             right: 20px !important;
-            width: 700px !important; /* WIDER as requested */
+            width: 90vw !important; 
+            max-width: 1400px !important;
             border-radius: 24px !important;
-            
-            /* 🔮 TRUE GLASS TRANSPARENCY */
-            /* Low opacity (0.25) to let the dashboard show through */
-            background: rgba(5, 8, 15, 0.25) !important; 
-            
-            /* Heavy Blur to make text readable over the background */
+            background: rgba(5, 8, 15, 0.95) !important; /* Slightly darker for readability */
             backdrop-filter: blur(50px) saturate(200%) !important;
             -webkit-backdrop-filter: blur(50px) saturate(200%) !important;
-            
-            /* Neon Borders & Depth */
             border: 1px solid rgba(255, 255, 255, 0.08) !important;
-            box-shadow: 
-                0 40px 80px rgba(0,0,0,0.9),       /* Deep Shadow */
-                0 0 0 1px rgba(255, 255, 255, 0.05) inset; /* Inner Bevel */
+            box-shadow: 0 40px 80px rgba(0,0,0,0.9);
             
-            z-index: 99999;
-            transition: all 0.5s cubic-bezier(0.19, 1, 0.22, 1);
+            /* 🚨 CRITICAL FIX: Overflow visible allows handle to stick out */
+            overflow: visible !important; 
+            z-index: 99999 !important;
+            transition: right 0.4s cubic-bezier(0.19, 1, 0.22, 1);
+            display: flex;
+            flex-direction: column;
         }
 
-        /* 🚨 KILL THE DUPLICATE TITLES (Global Override) */
-        body .drawer::before, body .drawer::after { 
-            display: none !important; 
-            content: none !important; 
-            opacity: 0 !important;
-        }
+        /* KILL DUPLICATES */
+        body .drawer::before, body .drawer::after { display: none !important; content: none !important; }
 
-        /* Shared Handle Styling */
+        /* SHARED HANDLE STYLING (The "Post-it") */
         .drawer-handle {
-            position: absolute; left: -40px; top: 15%;
-            width: 40px; height: 140px;
+            position: absolute; 
+            left: -50px; /* Sticks out 50px to the left */
+            top: 15%;
+            width: 50px; 
+            height: 140px;
             border-radius: 12px 0 0 12px;
+            border: 1px solid rgba(255,255,255,0.2);
+            border-right: none;
             display: flex; align-items: center; justify-content: center;
             cursor: pointer;
             writing-mode: vertical-rl; text-orientation: mixed;
-            font-family: 'JetBrains Mono', monospace; font-weight: 800; font-size: 11px; letter-spacing: 3px;
-            color: #000; 
+            font-family: 'JetBrains Mono', monospace; font-weight: 800; font-size: 12px; letter-spacing: 3px;
+            color: #fff; 
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
             box-shadow: -10px 0 30px rgba(0,0,0,0.5);
-            transition: transform 0.2s;
-            backdrop-filter: blur(10px);
+            background: #222; /* Default fallback */
+            z-index: 100000;
         }
-        .drawer-handle:hover { transform: translateX(-5px); }
+        .drawer-handle:hover { left: -60px; width: 60px; transition: all 0.2s ease; }
 
-        /* Scrollbar Polish */
-        .drawer-content::-webkit-scrollbar { width: 4px; }
-        .drawer-content::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
-        .drawer-content::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 2px; }
-        .drawer-content::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.4); }
+        /* SPLIT LAYOUT */
+        .rb-split-container {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 30px;
+            height: 100%; overflow: hidden; padding-top: 10px;
+        }
+        .rb-column {
+            display: flex; flex-direction: column;
+            background: rgba(0,0,0,0.2); border-radius: 16px;
+            border: 1px solid rgba(255,255,255,0.05); overflow: hidden; height: 100%;
+        }
+        .rb-header {
+            padding: 20px; border-bottom: 1px solid rgba(255,255,255,0.05);
+            font-family: 'JetBrains Mono'; font-weight: 700; display: flex; justify-content: space-between;
+        }
+        .rb-scroll-area { flex: 1; overflow-y: auto; padding: 10px; }
+        .rb-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        .rb-table th { text-align: left; padding: 12px; color: rgba(255,255,255,0.4); font-family: 'JetBrains Mono'; font-size: 10px; }
+        .rb-table td { padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.03); vertical-align: top; color: #eee; }
+        
+        .badge { padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; text-transform: uppercase; }
+        .badge.CRITICAL { background: rgba(239, 68, 68, 0.2); color: var(--neon-red); border: 1px solid var(--neon-red); }
+        .badge.HIGH { background: rgba(245, 158, 11, 0.2); color: var(--neon-amber); border: 1px solid var(--neon-amber); }
+        .badge.MEDIUM { background: rgba(56, 189, 248, 0.2); color: var(--neon-blue); border: 1px solid var(--neon-blue); }
     \`;
 
-    // Inject Styles Once
-    if (!document.getElementById('holo-drawer-css-v2')) {
+    if (!document.getElementById('holo-drawer-css-v7')) {
         const style = document.createElement('style');
-        style.id = 'holo-drawer-css-v2';
+        style.id = 'holo-drawer-css-v7';
         style.textContent = holoStyles;
         document.head.appendChild(style);
     }
 
-    // 2. SCALABLE DRAWER BUILDER (The Logic)
-    // Helper function to setup ANY drawer structure properly
+    // BUILDER
     const setupHoloDrawer = (id, handleText, color) => {
         const drawer = document.getElementById('drawer-' + id);
         if (!drawer) return null;
 
-        // Ensure Handle Exists (Don't wipe if it's there, just update)
+        // Ensure Handle
         let handle = drawer.querySelector('.drawer-handle');
         if (!handle) {
             handle = document.createElement('div');
             handle.className = 'drawer-handle';
-            handle.onclick = () => window.toggleDrawer(id);
+            handle.setAttribute('onclick', "window.toggleDrawer('" + id + "')");
             drawer.appendChild(handle);
         }
         
-        // Update Handle Visuals
+        // Force style updates
         handle.innerText = handleText;
         handle.style.background = color;
-        handle.style.boxShadow = '0 0 20px ' + color + '66'; // Add glow with opacity
+        handle.style.boxShadow = '0 0 20px ' + color + '66';
 
-        // Ensure Content Container Exists
+        // Ensure Container
         let container = document.getElementById(id + '-list-container');
         if (!container) {
             container = document.createElement('div');
             container.id = id + '-list-container';
             container.className = 'drawer-content';
+            container.style.padding = '40px';
+            container.style.height = '100%';
+            container.style.display = 'flex';
+            container.style.flexDirection = 'column';
             drawer.appendChild(container);
         }
         
-        // Apply Specific Border Color to the Drawer itself for extra flair
-        drawer.style.borderColor = color + '44'; // 44 = low opacity hex
-        
+        drawer.style.borderColor = color + '44';
         return container;
     };
 
-    // 3. MAIN RENDERER
     const UI_Drawer = {
+        renderAll(data) {
+             this.renderBudget();
+             this.renderWPs();
+             this.renderRoadblocks(data.roadblocks || []);
+        },
+
         renderBudget() {
-            // Use the Helper -> ID: 'budget', Label: 'BUDGET', Color: Green
             const container = setupHoloDrawer('budget', 'MASTER BUDGET', '#34d399');
             if (!container) return;
-
             const budget = STATE.data.budget || [];
-            
-            // Header
-            const headerHtml = 
-            '<div style="margin-bottom:30px; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:25px;">' +
-                '<div style="color:#34d399; font-weight:900; letter-spacing:1px; margin-bottom:25px; font-size:22px; text-shadow:0 0 30px rgba(52,211,153,0.4); display:flex; align-items:center; gap:15px;">' +
-                    '<span style="font-size:28px;">💰</span> MASTER BUDGET CONSUMPTION' +
-                '</div>' +
-                '<div class="flex" style="gap:20px;">' +
-                    '<div style="background:rgba(52,211,153,0.05); padding:25px; border-radius:16px; flex:1; border:1px solid rgba(52,211,153,0.2); position:relative; overflow:hidden;">' +
-                        '<div style="position:absolute; top:-20px; right:-20px; width:100px; height:100px; background:radial-gradient(circle, rgba(52,211,153,0.2), transparent 70%); border-radius:50%;"></div>' +
-                        '<div class="mono small" style="color:#34d399; margin-bottom:8px; letter-spacing:1px;">TOTAL BUDGET</div>' +
-                        '<div style="font-size:32px; font-weight:900; color:#fff; text-shadow:0 0 20px rgba(52,211,153,0.3);">NOK 234M</div>' + 
-                    '</div>' +
-                    '<div style="background:rgba(239,68,68,0.05); padding:25px; border-radius:16px; flex:1; border:1px solid rgba(239,68,68,0.2); position:relative; overflow:hidden;">' +
-                         '<div style="position:absolute; top:-20px; right:-20px; width:100px; height:100px; background:radial-gradient(circle, rgba(239,68,68,0.2), transparent 70%); border-radius:50%;"></div>' +
-                        '<div class="mono small" style="color:#ef4444; margin-bottom:8px; letter-spacing:1px;">SPENT (EST)</div>' +
-                        '<div style="font-size:32px; font-weight:900; color:#fff; text-shadow:0 0 20px rgba(239,68,68,0.3);">NOK 42M</div>' +
-                    '</div>' +
-                '</div>' +
-            '</div>';
-
-            // List
-            const listHtml = budget.map((item) => {
-                const totalQty = item.total_qty || 1;
-                const qtyInstall = item.qty_installed || 0;
-                const pctInstall = Math.min((qtyInstall / totalQty) * 100, 100);
-                const pctStock = Math.min(((item.qty_stock || 0) / totalQty) * 100, 100 - pctInstall);
-                
-                return '<div class="budget-row" style="margin-bottom:15px; padding:18px; background:rgba(255,255,255,0.015); border-radius:12px; border:1px solid rgba(255,255,255,0.03); transition: background 0.2s;">' +
-                        '<div class="flex justify-between" style="margin-bottom:12px;">' +
-                            '<div style="max-width: 70%;">' +
-                                '<div style="color:#f1f5f9; font-weight:700; font-size:13px; letter-spacing:0.3px;">' + item.description + '</div>' +
-                                '<div class="mono small" style="color:#64748b; font-size:10px; margin-top:4px;">' + (item.cost_code || 'N/A') + '</div>' +
-                            '</div>' +
-                            '<div class="text-right">' +
-                                '<div class="mono small" style="color:#94a3b8;">' + (item.total_budget ? (item.total_budget/1000000).toFixed(1) + 'M' : '0') + '</div>' +
-                                '<div style="font-size:11px; color:#34d399; font-weight:bold; margin-top:4px;">' + Math.round(pctInstall) + '% DONE</div>' +
-                            '</div>' +
-                        '</div>' +
-                        '<div class="progress-track" style="background:rgba(255,255,255,0.05); height:6px; border-radius:3px; overflow:hidden;">' +
-                            '<div class="prog-bar" style="width:' + pctInstall + '%; background:#34d399; box-shadow:0 0 10px rgba(52,211,153,0.5);"></div>' +
-                            '<div class="prog-bar" style="width:' + pctStock + '%; background:#f59e0b;"></div>' +
-                        '</div>' +
-                    '</div>';
-            }).join('');
-
-            container.innerHTML = headerHtml + listHtml;
+            container.innerHTML = \`<div style="padding:20px; color:#fff;">Budget Items: \${budget.length}</div>\`; 
         },
 
         renderWPs() {
-            // Use the Helper -> ID: 'wp', Label: 'WP SCOPE', Color: Amber
             const container = setupHoloDrawer('wp', 'WP SCOPE', '#f59e0b');
             if (!container) return;
-            
             const wps = STATE.data.wps || [];
-            
-            // Header for WP (To match the Budget style)
-             const headerHtml = 
-            '<div style="margin-bottom:30px; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:25px;">' +
-                '<div style="color:#f59e0b; font-weight:900; letter-spacing:1px; margin-bottom:10px; font-size:22px; text-shadow:0 0 30px rgba(245, 158, 11, 0.4); display:flex; align-items:center; gap:15px;">' +
-                    '<span style="font-size:28px;">📂</span> WORK PACKAGES' +
-                '</div>' +
-                 '<div class="mono small" style="color:#cbd5e1;">Active Scopes and Deliverables</div>' +
-            '</div>';
+            container.innerHTML = \`<div style="padding:20px; color:#fff;">WP Items: \${wps.length}</div>\`;
+        },
 
-            const listHtml = wps.map((wp) => 
-                '<div class="list-item" style="border-left: 3px solid var(--neon-amber); padding:20px; background:linear-gradient(90deg, rgba(245, 158, 11, 0.05), transparent); margin-bottom:10px; border-radius:0 8px 8px 0;">' +
-                    '<div style="font-size:15px; font-weight:bold; color:#fff; margin-bottom:5px; text-shadow:0 0 10px rgba(255,255,255,0.2);">' + wp.wp_id + '</div>' +
-                    '<div class="mono" style="color:#94a3b8; font-size:12px;">' + wp.description + '</div>' +
-                '</div>'
-            ).join('');
+        // 🚧 ROADBLOCKS
+        renderRoadblocks(items) {
+            // DEBUG: Print what we are trying to render
+            console.log("Drawers: Rendering " + (items ? items.length : 0) + " roadblocks");
+
+            const container = setupHoloDrawer('roadblocks', 'STOPPERS', '#ef4444');
+            if (!container) return;
+
+            // Safe Filters (Case Insensitive)
+            const safeItems = items || [];
+            const fieldItems = safeItems.filter(i => (i.type || '').toUpperCase() === 'FIELD');
+            const officeItems = safeItems.filter(i => (i.type || '').toUpperCase() === 'OFFICE');
             
-            container.innerHTML = headerHtml + (listHtml || '<div class="mono" style="opacity:0.5;">No WPs loaded.</div>');
+            // Catch anything else (e.g. type is null)
+            const otherItems = safeItems.filter(i => {
+                const t = (i.type || '').toUpperCase();
+                return t !== 'FIELD' && t !== 'OFFICE';
+            });
+
+            // If "Others" exist, treat them as FIELD for safety
+            if (otherItems.length > 0) fieldItems.push(...otherItems);
+
+            const renderRow = (item) => \`
+                <tr>
+                    <td>
+                        <div style="color:#fff; font-weight:600; margin-bottom:4px;">\${item.description || 'No Description'}</div>
+                        <div class="mono small" style="color:var(--neon-blue); opacity:0.7;">\${item.action_required || 'No Action'}</div>
+                    </td>
+                    <td><span class="badge \${(item.priority || 'MEDIUM').toUpperCase()}">\${item.priority || 'MEDIUM'}</span></td>
+                    <td style="color:#ccc;">\${item.owner || '-'}</td>
+                    <td class="mono" style="opacity:0.5;">\${item.due_date || '-'}</td>
+                </tr>
+            \`;
+
+            container.innerHTML = \`
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <div>
+                        <h2 class="mono" style="color:var(--neon-red); margin:0; font-size:24px; text-shadow:0 0 30px rgba(239, 68, 68, 0.4);">🚧 STOPPERS</h2>
+                        <span class="small mono" style="opacity:0.6;">SINGLE SOURCE OF TRUTH</span>
+                    </div>
+                </div>
+
+                <div class="rb-split-container">
+                    <div class="rb-column" style="border-top: 3px solid var(--neon-red);">
+                        <div class="rb-header" style="color:var(--neon-red);">
+                            <span>🏢 OFFICE / DESIGN</span>
+                            <span class="badge" style="background:rgba(255,255,255,0.1); color:#fff;">\${officeItems.length}</span>
+                        </div>
+                        <div class="rb-scroll-area">
+                            <table class="rb-table">
+                                <thead><tr><th>ISSUE / ACTION</th><th>PRIORITY</th><th>OWNER</th><th>DUE</th></tr></thead>
+                                <tbody>
+                                    \${officeItems.length ? officeItems.map(renderRow).join('') : '<tr><td colspan="4" style="text-align:center; padding:40px; opacity:0.3;">NO OFFICE BLOCKERS</td></tr>'}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="rb-column" style="border-top: 3px solid var(--neon-amber);">
+                        <div class="rb-header" style="color:var(--neon-amber);">
+                            <span>🏗️ FIELD / SITE</span>
+                            <span class="badge" style="background:rgba(255,255,255,0.1); color:#fff;">\${fieldItems.length}</span>
+                        </div>
+                        <div class="rb-scroll-area">
+                            <table class="rb-table">
+                                <thead><tr><th>ISSUE / ACTION</th><th>PRIORITY</th><th>OWNER</th><th>DUE</th></tr></thead>
+                                <tbody>
+                                    \${fieldItems.length ? fieldItems.map(renderRow).join('') : '<tr><td colspan="4" style="text-align:center; padding:40px; opacity:0.3;">NO FIELD BLOCKERS</td></tr>'}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            \`;
         }
     };
 `;

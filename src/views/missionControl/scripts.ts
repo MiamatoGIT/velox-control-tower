@@ -11,15 +11,31 @@ import { appJS } from './modules/app.js';
 
 export const js = `
 <script>
+    /**
+     * VELOX STARGATE - GLOBAL UI BRIDGE
+     * Ensures all modules merge into a single UI namespace 
+     * without "already declared" errors.
+     */
+    window.UI = window.UI || {};
+
+    // 1. Core Data & State
     ${coreJS}
+    
+    // 2. Data Services
     ${apiJS}
     ${logicJS}
-    ${uiComponentsJS} // Defines UI_Comp
-    ${uiMainJS}       // Defines UI_Main
-    ${uiModalsJS}     // Defines UI_Modal
-    ${uiDrawersJS}    // Defines UI_Drawer
-    ${uiCoreJS}       // Defines UI_Core (🚨 MUST BE HERE)
-    ${uiJS}           // Defines UI (The Bridge)
-    ${appJS}          // Defines App (Uses UI)
+    
+    // 3. UI Modules (Internal definitions)
+    ${uiComponentsJS} // Defines UI_Components logic
+    ${uiMainJS}       // Defines UI_Main logic
+    ${uiModalsJS}     // Defines UI_Modal logic
+    ${uiDrawersJS}    // Defines UI_Drawer logic
+    ${uiCoreJS}       // Defines UI_Core (Drawer toggles)
+    
+    // 4. The Bridge (Merges everything into window.UI)
+    ${uiJS}           
+    
+    // 5. Application Entry Point
+    ${appJS}          
 </script>
 `;

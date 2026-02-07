@@ -5,7 +5,8 @@ import { getMaterialContext } from './materialKnowledge';
 
 dotenv.config();
 
-const MODEL_NAME = "gemini-robotics-er-1.5-preview"; // Valid model name
+// ✅ CRITICAL: Keeping your specific model
+const MODEL_NAME = "gemini-robotics-er-1.5-preview"; 
 const API_KEY = process.env.GEMINI_API_KEY;
 
 if (!API_KEY) { console.error("❌ GEMINI_API_KEY is missing"); process.exit(1); }
@@ -14,7 +15,7 @@ const genAI = new GoogleGenerativeAI(API_KEY);
 const model = genAI.getGenerativeModel({ model: MODEL_NAME });
 
 // ============================================================
-// 1. AUDIO PROCESSOR (UNCHANGED)
+// 1. AUDIO PROCESSOR
 // ============================================================
 export const processAudioReport = async (filePath: string, mimeType: string): Promise<any> => {
     try {
@@ -34,12 +35,12 @@ export const processAudioReport = async (filePath: string, mimeType: string): Pr
 
     } catch (error) {
         console.error("❌ Gemini Audio Error:", error);
-        return { materials: [], comments: "Processing Failed", originalLanguage: "Unknown" };
+        return { materials: [], roadblocks: [], comments: "Processing Failed", originalLanguage: "Unknown" };
     }
 };
 
 // ============================================================
-// 2. PDF PROCESSOR (UPDATED)
+// 2. PDF PROCESSOR
 // ============================================================
 export const processPdfReport = async (filePath: string): Promise<any> => {
     try {
@@ -47,7 +48,6 @@ export const processPdfReport = async (filePath: string): Promise<any> => {
         const fileBuffer = fs.readFileSync(filePath);
         const base64Pdf = fileBuffer.toString('base64');
 
-        // ✅ Updated Prompt with HSE & Company Extraction
         const prompt = getPdfPrompt();
 
         const result = await model.generateContent([
@@ -64,90 +64,84 @@ export const processPdfReport = async (filePath: string): Promise<any> => {
 };
 
 // ============================================================
-// 🧠 BRAIN DEFINITIONS (PROMPTS)
+// 🧠 BRAIN DEFINITIONS (MERGED LOGIC)
 // ============================================================
 
 function getAudioPrompt(context: string): string {
     return `
-    You are a Construction Supervisor AI. You are listening to a Foreman's report from a NOISY site.
+    You are a Construction Supervisor AI listening to a site report.
     
     **CONTEXT:**
     ${context}
 
-    **NOISE CONTROL:**
-    - Focus ONLY on the human voice. 
-    - IGNORE drills, trucks, wind, and background shouting.
-
-    **YOUR GOAL:**
-    Analyze the work reported. It is NOT just a shopping list. 
-    They might be "Pulling Cable", "Installing", "Preparing", "Measuring", or "Testing".
+    **GOAL:** Extract Progress AND Critical Roadblocks for the "Single Source of Truth" dashboard.
     
-    **EXTRACT THESE 3 THINGS:**
-    1. **MATERIALS INSTALLED:** What was actually used/consumed? (e.g., "Installed 50m tray").
-    2. **ACTIVITY TYPE:** What were they doing? (e.g., "Preparation", "Installation", "QC Check").
-    3. **BLOCKER / REASON:** Did they stop? Why? (e.g., "Missing Bolts", "No Access", "Rain").
-       - If there is a blocker, extract a SHORT reason (2-5 words) for the database.
+    **1. PROGRESS EXTRACTION:**
+    - **MATERIALS:** What was used? (e.g., "Installed 50m tray").
+    - **ACTIVITY:** What were they doing? (e.g., "Preparation", "QC Check").
+
+    **2. ROADBLOCK CLASSIFICATION (CRITICAL):**
+    If the user mentions a delay, missing item, clash, or stoppage, create a "roadblock" entry.
+    - **TYPE:** - "FIELD" -> Physical issues (Access, Weather, Broken Tool, Scaffolding).
+      - "OFFICE" -> Paperwork issues (Missing Drawing, Design Clash, Material Delivery delay).
+    - **OWNER:** Who must fix it? (Engineering, Procurement, Site Team, HSE).
+    - **PRIORITY:** - "CRITICAL" (Stops work completely).
+      - "HIGH" (Slows work significantly).
+      - "MEDIUM" (Needs attention).
 
     **OUTPUT FORMAT (JSON ONLY):**
     {
         "materials": [
-            { "name": "Standardized Name", "category": "Category", "quantity": 10, "unit": "m", "status": "INSTALLED" }
+            { "name": "String", "category": "String", "quantity": Number, "unit": "String", "status": "INSTALLED" }
         ],
-        "blocker": "Missing M12 Bolts",  <-- Return NULL if no blocker
-        "comments": "Start with 'ACTIVITY: [Type]'. Then summarize the report.",
+        "roadblocks": [
+            {
+                "description": "Short description of the issue",
+                "type": "FIELD" | "OFFICE",
+                "priority": "CRITICAL" | "HIGH" | "MEDIUM",
+                "owner": "Engineering" | "Procurement" | "Site Team",
+                "area": "String (Infer from context)",
+                "action_required": "What needs to be done?"
+            }
+        ],
+        "comments": "Summary of report",
         "originalLanguage": "Portuguese"
     }
     `;
 }
 
-// ✅ NEW: Enhanced PDF Prompt
 function getPdfPrompt(): string {
     return `
-    You are a Project Controls Manager. Extract data from this Daily Progress Report PDF.
+    You are a Project Controls Manager. Extract data from this PDF for the Daily Report.
     
     **CRITICAL EXTRACTION RULES:**
-    1. **EXECUTION PROGRESS (Detailed):**
-       - Look for the "EXECUTION PROGRESS" table.
-       - Extract EVERY ROW as an item in the "execution" array.
-       - Map columns: 
-         - "Activity" -> description
-         - "Act %" or "Actual %" -> actualPercent (Number)
-         - "Status" -> status
-         - "WP ID" -> wpId
-       - Example: "Earthing white space" (85%) and "Earthing loading bay" (30%) must be SEPARATE items.
 
-    2. **HSE STATUS (Health, Safety, Environment):**
-       - Look for the HSE Table or Section.
-       - Extract "Working Hours" (e.g., "7 a.m. - 7 p.m." becomes "07:00 - 19:00").
-       - Extract counts for: "People on site", "Incidents", "Toolboxes" (TBT), "DRA" (Risk Assessment), "Observations".
-       - Extract "Extra Training" or "Training" text.
-       - Extract "Site Inspections" status.
+    1. **ROADBLOCKS / ISSUES (New Requirement):**
+       - Look for sections labeled "Issues", "Concerns", "Blockers", or "Constraints".
+       - **CLASSIFY** each issue:
+         - **FIELD:** Site constraints, access, weather, HSE.
+         - **OFFICE:** Design missing, Engineering TQ, Procurement delay.
+       - **EXTRACT:** Owner (Engineering, Procurement, Site) and Priority.
+       - If a due date is not listed, estimate +7 days or leave null.
 
-    3. **SUBCONTRACTORS (External Companies):**
-       - Look for tables labeled "Subcontractors", "Site Partners", or "External Companies".
-       - Extract Company Name, Work Description (Role), and Finish Date/Status.
-       - If personnel count is not explicitly listed, estimate based on context or set to 0.
+    2. **EXECUTION PROGRESS:**
+       - Extract the "EXECUTION PROGRESS" table rows into the "execution" array.
+       - Map: Description, Actual %, Status, WP ID.
 
-    4. **STANDARD SECTIONS:**
-       - Meta: Project Name, Date, Prepared By.
-       - Strategy: Executive Strategy focus points.
-       - Main Activity: The primary Execution item (Progress %).
-       - Procurement: The Procurement tracking table.
-       - Readiness: The Work Package Preparation table.
+    3. **HSE STATUS:**
+       - Extract: Working Hours, People on site, Incidents, Toolboxes, DRA, Observations.
 
+    4. **SUBCONTRACTORS:**
+       - Extract: Company Name, Role, Personnel count.
 
-    5. **COMMISSIONING (Detailed):**
-       - Look for the "COMMISSIONING" table.
-       - Extract EVERY ROW as an item in the "commissioning" array.
-       - Map columns: 
-         - "WP ID" -> wpId
-         - "Activity" -> description
-         - "Level 1" -> level1 (e.g. "Done")
-         - "Level 2" -> level2
-         - "Level 3" -> level3
-         - "Level 4" -> level4
-         - "Level 5" -> level5
-         - "Notes" -> notes
+    5. **COMMISSIONING:**
+       - Extract table rows into "commissioning" array.
+    
+    6. **READINESS:**
+       - Extract: WP ID, Description, Readiness Status.
+
+    7. **PROCUREMENT:**
+       - Extract: Material, Expected Date, Status.
 
     **OUTPUT FORMAT (JSON ONLY):**
     {
@@ -160,24 +154,44 @@ function getPdfPrompt(): string {
             "incidents": Number,
             "toolboxes": Number,
             "dra": Number,
-            "observations": Number,
-            "training": "String",
-            "inspections": "String"
+            "observations": Number
         },
 
-        "externalCompanies": [ 
-            { "name": "String", "role": "String", "personnel": Number } 
+        "roadblocks": [
+            {
+                "description": "String",
+                "type": "FIELD" | "OFFICE",
+                "priority": "CRITICAL" | "HIGH" | "MEDIUM",
+                "owner": "String",
+                "area": "String",
+                "action_required": "String",
+                "due_date": "YYYY-MM-DD"
+            }
         ],
+
+        "externalCompanies": [ { "name": "String", "role": "String", "personnel": Number } ],
 
         "mainActivity": { "description": "String", "targetPercent": Number, "actualPercent": Number, "status": "String" },
         "procurement": [ { "material": "String", "expectedDate": "String", "status": "String" } ],
-        "readiness": [ { "wpId": "String", "description": "String", "drawingsStatus": "String", "readinessStatus": "String" } ],
-        "commissioning": { "description": "String", "targetPercent": Number, "actualPercent": Number, "status": "String" }
+        "execution": [ { "description": "String", "status": "String", "percent": Number } ],
+        "readiness": [ { "wpId": "String", "description": "String", "readinessStatus": "String" } ],
+        "commissioning": { "description": "String", "status": "String" }
     }
     `;
 }
 
 function cleanAndParseJson(text: string): any {
-    const clean = text.replace(/```json/g, '').replace(/```/g, '').trim();
-    return JSON.parse(clean);
+    try {
+        const clean = text.replace(/```json/g, '').replace(/```/g, '').trim();
+        return JSON.parse(clean);
+    } catch (e) {
+        console.error("❌ JSON Parse Error. Raw Gemini Output:", text);
+        // Return a safe fallback to prevent crash
+        return { 
+            meta: {}, 
+            materials: [], 
+            roadblocks: [], 
+            comments: "Error parsing AI response" 
+        };
+    }
 }

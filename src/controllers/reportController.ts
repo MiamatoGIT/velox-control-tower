@@ -5,6 +5,10 @@ import { generateReportPDF } from '../services/pdfService';
 import path from 'path';
 import fs from 'fs';
 
+// Database imports for Roadblocks
+import sqlite3 from 'sqlite3';
+import { open } from 'sqlite';
+
 interface MulterFiles { [fieldname: string]: Express.Multer.File[]; }
 
 export const submitReport = async (req: Request, res: Response) => {
@@ -15,8 +19,10 @@ export const submitReport = async (req: Request, res: Response) => {
         const audioFile = files['audio'] ? files['audio'][0] : null;
         const photoFiles = files['photo'] || [];
 
-        let aiData = { materials: [], blocker: null, comments: "", originalLanguage: "en" };
+        // Default AI Data structure
+        let aiData: any = { materials: [], roadblocks: [], blocker: null, comments: "", originalLanguage: "en" };
         
+        // 1. PROCESS AUDIO WITH GEMINI
         if (audioFile) {
             if (audioFile.mimetype !== 'application/octet-stream') {
                 aiData = await processAudioReport(audioFile.path, audioFile.mimetype);
@@ -25,7 +31,61 @@ export const submitReport = async (req: Request, res: Response) => {
             }
         }
 
-        const finalBlocker = body.blocker || aiData.blocker; 
+        // 2. 🚧 SAVE ROADBLOCKS TO NEW TABLE
+        if (aiData.roadblocks && Array.isArray(aiData.roadblocks) && aiData.roadblocks.length > 0) {
+            console.log(`🚨 Saving ${aiData.roadblocks.length} Roadblocks...`);
+            
+            try {
+                const db = await open({
+                    filename: path.join(process.cwd(), 'velox_core.db'),
+                    driver: sqlite3.Database
+                });
+
+                const reporter = body.user || "Unknown User";
+
+                for (const rb of aiData.roadblocks) {
+                    await db.run(`
+                        INSERT INTO roadblocks (
+                            uid, type, status, priority, description, 
+                            action_required, area, owner, reported_by, due_date
+                        ) VALUES (
+                            'RB-' || hex(randomblob(2)), 
+                            ?, 'OPEN', ?, ?, 
+                            ?, ?, ?, ?, date('now', '+7 days')
+                        )
+                    `, [
+                        rb.type || 'FIELD',         
+                        rb.priority || 'MEDIUM',    
+                        rb.description,
+                        rb.action_required || 'Assess on site',
+                        rb.area || 'General Site',
+                        rb.owner || 'Site Team',
+                        reporter
+                    ]);
+                }
+            } catch (dbError) {
+                console.error("❌ Failed to save roadblocks:", dbError);
+            }
+        }
+
+        // 🚨 2.5 LEGACY BRIDGE: Map new "Roadblocks" to old "Blocker" field
+        // This ensures the report turns RED in the main list
+        let calculatedBlocker = body.blocker || aiData.blocker;
+        
+        if (!calculatedBlocker && aiData.roadblocks && aiData.roadblocks.length > 0) {
+            // Take the description of the first roadblock found
+            calculatedBlocker = aiData.roadblocks[0].description;
+            console.log(`🔗 Linking Roadblock to Field Log: "${calculatedBlocker}"`);
+        }
+
+        // 🚨 CRITICAL FIX: FORCE STATUS TO 'BLOCKED' IF BLOCKER EXISTS
+        // This guarantees the Dashboard Popup will trigger
+        let finalStatus = body.taskStatus || "PENDING";
+        if (calculatedBlocker) {
+            console.log("🛑 FORCE OVERRIDE: Status set to BLOCKED due to issue detection.");
+            finalStatus = 'BLOCKED';
+        }
+
         const finalComments = body.comments || aiData.comments;
 
         let photoPathEntry = null;
@@ -34,25 +94,23 @@ export const submitReport = async (req: Request, res: Response) => {
         const reportData = {
             workPackage: body.workPackage || "UNKNOWN-WP",
             user: body.user || "Unknown User",
-            taskStatus: finalBlocker ? "BLOCKED" : (body.taskStatus || "YES"), 
-            materials: aiData.materials,
+            taskStatus: finalStatus,    // <--- Using the forced status here
+            blocker: calculatedBlocker, // <--- Using the detected blocker here
             comments: finalComments,
-            blocker: finalBlocker,
-            lang: body.lang || aiData.originalLanguage || "en",
-            pdfPath: null,
-            audioPath: audioFile ? audioFile.path : null,
-            photoPath: photoPathEntry,
-            quantity: body.quantity || "0"
+            quantity: body.quantity ? body.quantity.toString() : "0",
+            timestamp: new Date().toISOString(),
+            photoPath: photoPathEntry
         };
 
         const logId = await saveLog(reportData);
         if (!logId) throw new Error("Failed to save log to DB");
 
+        // 4. GENERATE PDF
         try {
             const outputDir = path.join(process.cwd(), 'ACC_Sync');
             if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
 
-            const summaryString = `AI Analysis: ${finalBlocker ? 'BLOCKER DETECTED: ' + finalBlocker : 'Progress Validated.'}`;
+            const summaryString = `AI Analysis: ${calculatedBlocker ? 'BLOCKER DETECTED: ' + calculatedBlocker : 'Progress Validated.'}`;
             const pdfFilename = await generateReportPDF(reportData, summaryString, outputDir);
             await updateLogPdf(logId, pdfFilename);
             console.log(`✅ PDF Created & Linked: ${pdfFilename}`);
@@ -68,7 +126,6 @@ export const submitReport = async (req: Request, res: Response) => {
     }
 };
 
-// ✅ EXPORTED DELETE FUNCTION
 export const deleteReport = async (req: Request, res: Response) => {
     try {
         const id = parseInt(req.params.id as string);
@@ -82,7 +139,7 @@ export const deleteReport = async (req: Request, res: Response) => {
             res.status(404).json({ error: "Log not found" });
         }
     } catch (error) {
-        console.error("❌ Delete Error:", error);
-        res.status(500).send("Server Error");
+        console.error("Delete Error:", error);
+        res.status(500).json({ error: "Server error" });
     }
 };

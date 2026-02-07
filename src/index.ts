@@ -52,6 +52,8 @@ app.get('/mission-control', webAuthMiddleware, renderMissionControl);
 app.get('/api/live', webAuthMiddleware, getLiveStats); 
 app.post('/api/ack', webAuthMiddleware, acknowledgeBlocker);
 app.get('/', renderDashboard);
+app.get('/api/stats/live', webAuthMiddleware, getLiveStats);
+app.post('/api/logs/acknowledge', webAuthMiddleware, acknowledgeBlocker);
 
 // --- MOBILE APP ---
 app.post('/api/consent', async (req, res) => {
